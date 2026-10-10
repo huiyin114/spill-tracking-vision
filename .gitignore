@@ -10,6 +10,7 @@ __pycache__/
 *.tif
 *.nc
 *.zip
+data/raw/
 
 # 帳號密碼
 .env 
