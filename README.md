@@ -8,7 +8,15 @@
 
 ## 事件背景
 
-帛琉籍貨櫃輪天使輪（Angel）於 2023-07-21 00:19（台灣時間）在高雄港外沉沒，船上燃油外洩（來源：JpGU 2025 U03-P04）。報導指出，杜蘇芮與卡努颱風預期會影響打撈與除污作業。
+帛琉籍貨櫃輪天使輪（Angel）2023-07-20 在高雄港第二錨區失去動力，2023-07-21 05:30 沉沒，船上燃油外洩。
+
+本專案的事件參數以官方公告為準：
+
+- 沉沒時間：2023-07-21 05:30（運安會調查頁面）。原文未註明時區；同頁的失去動力時間 10:09 在英文頁標示為當地時間（UTC 02:09），因此視為台灣時間。
+- 沉船位置：22°36.54′N、120°12.41′E（航港局 2023-08-01 礙航公告「沉船位置更新」；公告未註明座標系）。
+- JpGU 2025 摘要記載沉沒時間為 00:19，與運安會不一致，不採用。
+
+報導指出，杜蘇芮與卡努颱風預期會影響打撈與除污作業。
 
 ## 現有研究
 
@@ -43,6 +51,8 @@
 - Chu, C.-H., Chen, C.-F., & Wu, C.-C. (2025). Application of Remote Sensing Technology in Monitoring Oil Pollution from Ship Grounding Incidents. JpGU Meeting 2025, U03-P04. https://pub.confit.atlas.jp/ja/event/jpgu2025/presentation/U03-P04
 - Taiwan News（2023-07-22）。Doksuri could hamper efforts to recover 600 containers from sunken ship off south Taiwan. https://www.taiwannews.com.tw/en/news/4951068
 - 公視新聞（2023-08-02）。天使輪沉沒貨櫃漂流 海保署持續清除外溢油污。 https://news.pts.org.tw/article/649308
+- 國家運輸安全調查委員會。1120720 ANGEL貨櫃船高雄港外海沉沒事故. https://www.ttsb.gov.tw/1243/22344/38984/post （沉沒時間、事故經過）
+- 交通部航港局。礙航公告(南區)「天使輪」於高雄港第二錨區沉船位置更新（2023-08-01）. https://www.motcmpb.gov.tw/Information/Detail/90093f9c-34af-4a8c-82a3-7018cc21d57e?SiteId=1&NodeId=483 （沉船座標）
 - Copernicus Data Space Ecosystem. STAC product catalogue. https://documentation.dataspace.copernicus.eu/APIs/STAC.html （端點網址、可用資料集、舊端點棄用說明）
 - Copernicus Data Space Ecosystem. CDSE STAC API 根頁面. https://stac.dataspace.copernicus.eu/v1/ （`conformsTo` 宣告支援 Item Search；查詢日期 2026-10-10）
 - Copernicus Data Space Ecosystem. CDSE STAC API 的 OpenAPI 描述. https://stac.dataspace.copernicus.eu/v1/api （`/search` 的 collections、bbox、datetime、limit 參數說明；互動版為 https://stac.dataspace.copernicus.eu/v1/api.html ）
