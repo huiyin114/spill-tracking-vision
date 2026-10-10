@@ -6,6 +6,12 @@ import json
 import sys
 
 import pandas as pd
+from shapely.geometry import Point, shape
+
+from event import WRECK_LAT, WRECK_LON
+
+# shapely 的座標順序是 (x, y) = (經度, 緯度)，和平常說「緯度、經度」相反
+WRECK = Point(WRECK_LON, WRECK_LAT)
 
 
 def load_items(path):
@@ -30,6 +36,8 @@ def load_items(path):
             "tile": p.get("grid:code"),              # 只有 Sentinel-2 有
             "cloud_cover": p.get("eo:cloud_cover"),  # 只有 Sentinel-2 有
             "bbox": item["bbox"],
+            # 影像實際涵蓋範圍（多邊形）是否包含沉船；bbox 只是外框，不能拿來判斷
+            "covers_wreck": shape(item["geometry"]).contains(WRECK),
         })
 
     df = pd.DataFrame(rows)
@@ -44,12 +52,17 @@ def group_passes(items, gap_minutes=10):
     new_pass = items["time_utc"].diff() > pd.Timedelta(minutes=gap_minutes)
     items["pass_id"] = new_pass.cumsum()
 
+    # 只看涵蓋沉船的影像的雲量（Sentinel-2 為整個圖幅的平均，不是沉船處）
+    items["cloud_at_wreck"] = items["cloud_cover"].where(items["covers_wreck"])
+
     passes = items.groupby("pass_id").agg(
         platform=("platform", "first"),
         time_utc=("time_utc", "min"),
         orbit_state=("orbit_state", "first"),
         mode=("mode", "first"),
         n_items=("id", "count"),
+        covers_wreck=("covers_wreck", "any"),
+        cloud_cover_min=("cloud_at_wreck", "min"),
         tiles=("tile", lambda s: ";".join(sorted(s.dropna()))),
     ).reset_index()
     passes["time_tw"] = passes["time_utc"].dt.tz_convert("Asia/Taipei")
