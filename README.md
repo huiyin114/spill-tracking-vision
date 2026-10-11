@@ -42,9 +42,28 @@
 - 查詢依據：STAC 是公開標準，搜尋方式由 STAC API 的 Item Search 規範定義。CDSE 端點根頁面的 `conformsTo` 欄位宣告支援 `https://api.stacspec.org/v1.0.0/item-search`，其 OpenAPI 描述（`/v1/api`）列出 `/search` 的 `collections`、`bbox`、`datetime`、`limit` 參數並連到該規範。
 - 參數用法：`bbox` 順序為西、南、東、北，`datetime` 區間以 `/` 分隔，回應沒有 `next` 連結即為最後一頁（依 Item Search 規範）。
 
+### 風資料（氣象署 CODiS 測站）
+
+- 來源：中央氣象署「氣候觀測資料查詢服務」（CODiS，https://codis.cwa.gov.tw/）測站資料的「單項逐時月報表」風速與風向，2023 年 7、8 月。下載日期：2026-10-11。原始 CSV 放在 `data/raw/codis/`（不納入版控）。
+- 測站：鼓山 C0V690（離沉船 7.2 km）、前鎮 C0V890（11.5 km）、蚵仔寮 C0V850（13.8 km），清單見 `data/stations.csv`，距離由測站清單座標與官方沉船座標計算。選法：CODiS 高雄市共 67 站，依資料說明只有 46、C0、C2 開頭的站有風（C1 是雨量站），再依距離排序，並取不同位置的三站（鼓山地址為臨海一路，靠海是依路名的推測）。
+- 資料定義（CODiS 觀測資料說明 Ver.2025.12.31）：逐時風速、風向為整點前 10 分鐘的平均；風速 ≦ 0.2 m/s 時風向記為 0，北風記為 360。
+- 時間：資料說明沒有寫明時區，也沒有說第 24 欄的意義。這裡視為台灣時間，第 24 欄為隔天 00:00（推論，待核對）。
+- 限制：三站都在陸地或港區，離沉船 7–14 km，不是沉船位置的風。風弱時三站彼此差異很大（例如 2023-08-03 06 時為 3.5、4.6、6.9 m/s），所以三站並列，不取平均。
+- 查證後不採用的來源：CODiS 氣候格點資料（2.5 km）只有氣溫、降水量、氣壓、相對溼度、露點溫度，沒有風；氣象資料開放平臺的海象監測資料（O-B0075-001／002）只提供最近 48 小時與 30 天，取不到 2023 年。
+- 處理：`wind.py` 讀月報表，輸出逐時表 `data/wind_hourly.csv`，並對每次衛星過境、每個測站列出時間最近的一到兩筆觀測 `data/wind_at_passes.csv`（時間差上限 30 分鐘）。Sentinel-2 的過境皆約在台灣時間 10:25，介於 10 時與 11 時兩筆觀測之間，所以兩筆都列出。
+
+
 ## 進度
 
 - [x] 文獻起點：JpGU 2025 摘要
+- [x] 事件參數（官方沉沒時間與沉船位置）
+- [x] 衛星目錄：Sentinel-1/2 過境與是否涵蓋沉船
+- [x] 無人機清單與每日摘要
+- [x] 時間軸對齊：衛星過境與無人機出勤
+- [x] 風：CODiS 三個測站的逐時風與各次過境的風
+- [ ] 海流與潮汐
+- [ ] 雷達暗區偽陽性過濾
+- [ ] 漂移模擬與比對
 
 ## 參考資料
 
@@ -57,3 +76,6 @@
 - Copernicus Data Space Ecosystem. CDSE STAC API 根頁面. https://stac.dataspace.copernicus.eu/v1/ （`conformsTo` 宣告支援 Item Search；查詢日期 2026-10-10）
 - Copernicus Data Space Ecosystem. CDSE STAC API 的 OpenAPI 描述. https://stac.dataspace.copernicus.eu/v1/api （`/search` 的 collections、bbox、datetime、limit 參數說明；互動版為 https://stac.dataspace.copernicus.eu/v1/api.html ）
 - STAC API – Item Search 規範. https://github.com/radiantearth/stac-api-spec/blob/main/item-search/README.md （上述參數的標準定義，以及 bbox 順序、datetime 區間與 next 連結的規則）
+- 中央氣象署. 氣候觀測資料查詢服務（CODiS）. https://codis.cwa.gov.tw/ （測站清單、逐時風速與風向月報表；查詢日期 2026-10-11）
+- 中央氣象署. 氣候觀測資料查詢服務—觀測資料說明（Ver.2025.12.31）. 於 CODiS 測站資料頁的「資料說明」下載 （站碼意義、逐時風的定義、符號說明）
+- 中央氣象署. 氣象資料開放平臺. https://opendata.cwa.gov.tw/ （海象監測資料 O-B0075-001／002 僅提供最近 48 小時與 30 天；查詢日期 2026-10-11）
