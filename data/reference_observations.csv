@@ -1,0 +1,4 @@
+﻿ref_id,sensor,date,variable,value,unit,source,note
+jpgu2025-s2-0724-area,S2,2023-07-24,oil_area,20.3,km2,"Chu, Chen & Wu (2025), JpGU 2025 摘要 U03-P04",油膜往東南擴散；會議摘要，研究者判釋，方法未公開；只給日期，未給時間與時區
+jpgu2025-s1-0727-area,S1,2023-07-27,oil_area,10.7,km2,"Chu, Chen & Wu (2025), JpGU 2025 摘要 U03-P04",油膜往東南；會議摘要，研究者判釋，方法未公開；只給日期，未給時間與時區
+jpgu2025-s1-0727-maxdist,S1,2023-07-27,oil_max_distance,26.5,km,"Chu, Chen & Wu (2025), JpGU 2025 摘要 U03-P04",距沉船最遠距離；會議摘要，研究者判釋，方法未公開；只給日期，未給時間與時區
