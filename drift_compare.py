@@ -79,8 +79,8 @@ def load_particles(path):
     return df.sort_values(["time_utc", "particle"]).reset_index(drop=True)
 
 
-def summarize_at(particles, t, wreck_lat, wreck_lon, max_gap_min=30):
-    """取最近的輸出時間（差距上限 max_gap_min 分鐘）的粒子統計。沒有符合的時間回傳 None。"""
+def nearest_output_time(particles, t, max_gap_min=30):
+    """離 t 最近的輸出時間與時間差（分鐘，輸出時間減 t）；差距超過上限或沒有輸出時回傳 None。一樣近取較早的。"""
     t = pd.Timestamp(t)
     times = pd.Series(particles["time_utc"].unique())
     if times.empty:
@@ -90,9 +90,18 @@ def summarize_at(particles, t, wreck_lat, wreck_lon, max_gap_min=30):
     k = order.index[0]
     if order["abs"].iloc[0] > max_gap_min:
         return None
-    rows = particles[particles["time_utc"] == times.iloc[k]]
+    return times.iloc[k], float(gap.iloc[k])
+
+
+def summarize_at(particles, t, wreck_lat, wreck_lon, max_gap_min=30):
+    """取最近的輸出時間（差距上限 max_gap_min 分鐘）的粒子統計。沒有符合的時間回傳 None。"""
+    found = nearest_output_time(particles, t, max_gap_min)
+    if found is None:
+        return None
+    when, gap_min = found
+    rows = particles[particles["time_utc"] == when]
     pos = rows[np.isfinite(rows["lon"]) & np.isfinite(rows["lat"])]
-    out = {"sim_time_utc": times.iloc[k], "gap_min": float(gap.iloc[k]),
+    out = {"sim_time_utc": when, "gap_min": gap_min,
            "n_particles": int(particles["particle"].nunique()),
            "n_with_position": int(len(pos)),
            "n_stranded": int((pos["status"] == STATUS_STRANDED).sum())}

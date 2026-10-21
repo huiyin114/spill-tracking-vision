@@ -27,6 +27,8 @@ python reference.py --reference data/reference_observations.csv --passes data/pa
 python drift_sim.py --current-nc data/raw/cmems/<海流檔>.nc --wind-nc data/raw/cmems/<風檔>.nc --wind-drift-factor 0.03 --out data/drift_particles_base.csv
 python drift_sim.py --current-nc data/raw/cmems/<海流檔>.nc --wind-nc data/raw/cmems/<風檔>.nc --wind-drift-factor 0.02 --out data/drift_particles_wind002.csv
 python drift_compare.py --particles base=data/drift_particles_base.csv wind002=data/drift_particles_wind002.csv --matched data/reference_matched.csv --passes data/passes.csv --out data/drift_vs_reference.csv
+# 漂移模擬的圖（opendrift 環境）：每個文獻對應過境一張 PNG，加一段 GIF 動畫
+python drift_plot.py --particles base=data/drift_particles_base.csv wind002=data/drift_particles_wind002.csv --matched data/reference_matched.csv --passes data/passes.csv --out-dir figures --animation
 python build_page.py --data data --template site/template.html --out site/index.html
 ```
 
@@ -42,6 +44,7 @@ python build_page.py --data data --template site/template.html --out site/index.
 | `extract_ocean.py`、`ocean.py` | 模型海流與模型風：抽沉船最近格點的逐時序列、換算速度與方向、對齊到各次過境 |
 | `drift_sim.py` | 用 OpenDrift 的 OpenOil 模擬沉船處釋放的油漂移（在 opendrift 環境執行） |
 | `drift_compare.py` | 模擬的粒子位置與文獻的方向、最遠距離並列 |
+| `drift_plot.py` | 漂移模擬的圖：過境時刻的粒子位置靜態圖與動畫（在 opendrift 環境執行） |
 | `features.py` | 整成長格式特徵表 |
 | `reference.py` | 外部文獻估計值與過境的對應 |
 | `page_data.py`、`build_page.py`、`site/` | 產生統一介面頁 |
@@ -74,7 +77,7 @@ python build_page.py --data data --template site/template.html --out site/index.
 
 1. 事件期間所有可用的衛星過境與無人機出勤，放到同一條時間軸：**完成**。
 2. 為每個觀測補上同時間的物理條件：**已完成風（氣象署測站）、模型海流與模型風（Copernicus Marine，沉船最近格點）**。氣象署公開的海象資料只有最近 48 小時與 30 天，取不到 2023 年，所以海流改用 Copernicus Marine。模型資料只下載 2023-07-20 至 07-29，所以 18 次過境中只有 3 次（7/22 S1、7/24 S2、7/27 S1）有模型值。潮汐沒有另外處理，所用的海流資料集是否含潮流尚未確認。
-3. 以沉船為污染源做漂移模擬並與觀測比對：**程式完成，正式結果待產生**（OpenDrift；只比方向與距離，見「漂移模擬」）。
+3. 以沉船為污染源做漂移模擬並與觀測比對：**完成**（OpenDrift；只比方向與距離）。**模擬結果與文獻不一致**：兩組模擬都往北到北北西漂，文獻是往東南（見「漂移模擬」的結果）。
 4. 另外評估過、**未做**：雷達暗區偽陽性過濾。
 
 因為沒有油膜面積的自動偵測，專案裡沒有任何「驗證」文獻數字的結果；文獻估計值只是並列顯示。
@@ -125,6 +128,23 @@ python build_page.py --data data --template site/template.html --out site/index.
 - 擱淺：OpenDrift 的結果在粒子擱淺後位置會消失，但油還在岸上；`result_to_table` 讓擱淺粒子保留最後位置。飄出資料範圍的粒子（`missing_data`）位置維持空。
 - 比對：只比方向與 7/27 的最遠距離。不比面積（模擬沒有對應的量）。方向只列「重心方位與東南（135 度）差幾度」，不做通過／不通過的判定；最遠距離同時列最遠一顆與 95% 分位數。結果在 `data/drift_vs_reference.csv`。這是並列，不是驗證：文獻數字是研究者的判釋估計。
 - 方向與文獻不一致時照實寫；可能原因（推測，未驗證）包括海流 1/12° 的解析度、沒有海浪、風來源是 stress-equivalent wind、釋放時間假設。不為了接近文獻調整參數。
+- 執行時 OpenDrift 會警告「模擬結束時間不在輸出時間上」並把結束時間延長到 2023-07-28 23:30 UTC：釋放在 21:30 UTC，輸出都在每小時的 30 分，要求的結束時間 23:00 因此被延長半小時，沒有影響。
+
+結果（`data/drift_vs_reference.csv`，在使用者的電腦與我的雲端環境跑出同樣的數字）：
+
+| 模擬 | 過境 | 模型時間差 | 重心方位 | 與東南（135 度）差 | 重心距離 | 最遠一顆 | 95% 分位數 | 擱淺粒子 | 文獻最遠距離 |
+|---|---|---|---|---|---|---|---|---|---|
+| 風係數 0.03 | 7/24 S2 | +4.3 分 | 北北西 341° | 154° | 58 km | 80 km | 77 km | 728／1000 | — |
+| 風係數 0.03 | 7/27 S1 | +28.6 分 | 北北西 344° | 151° | 60 km | 109 km | 86 km | 728／1000 | 26.5 km |
+| 風係數 0.02 | 7/24 S2 | +4.3 分 | 北北西 338° | 157° | 74 km | 80 km | 77 km | 0／1000 | — |
+| 風係數 0.02 | 7/27 S1 | +28.6 分 | 北北西 351° | 144° | 95 km | 107 km | 100 km | 13／1000 | 26.5 km |
+
+- 兩組模擬的重心都在沉船的北到北北西，和文獻的東南差 144 到 157 度，距離（58–95 km）也遠大於文獻的最遠距離 26.5 km。所以這次模擬與文獻不一致，不是「接近但有差距」。
+- 方向對風漂移係數（0.03 或 0.02）不敏感；距離對係數敏感（重心距離 58 對 74 km、60 對 95 km）。這是對上表的描述，不是原因的驗證。
+- 係數 0.03 時約 7 成粒子在 7/22 晚上就擱淺在台灣西南岸（約 23.05°N，取自雲端預覽的同一份資料），所以 7/24、7/27 的位置多半是擱淺位置；係數 0.02 時粒子較晚才靠岸（7/27 只有 13 顆擱淺）。
+- 這個結果只說明「在這些假設與這兩個資料來源下」模擬往北漂；它不能證明文獻有錯，也不能證明模擬正確。文獻數字是會議摘要裡的判釋估計，方法未公開。
+
+圖（`drift_plot.py`，輸出到 `figures/`）：每個文獻對應的過境一張靜態圖（兩個模擬並排：粒子、重心與重心軌跡、沉船、25／50／100 km 距離圈、文獻方向與最遠距離圈）、一段動畫 `drift_animation.gif`。陸地用 OpenDrift 擱淺判斷所用的同一份陸地遮罩，不需要另外下載底圖。圖上的文字是英文。文獻方向的箭頭只表示方向，長度沒有意義。畫圖程式沒有單元測試，只用眼睛檢查圖；有測試的是方位與距離換算、地圖範圍、動畫時間、重心軌跡。
 
 ### 模型海流與風（`extract_ocean.py`、`ocean.py`）
 
@@ -214,7 +234,9 @@ python build_page.py --data data --template site/template.html --out site/index.
 - [ ] 潮汐（沒有另外處理）
 - [ ] 雷達暗區偽陽性過濾（未做）
 - [x] 漂移模擬與比對的程式（`drift_sim.py`、`drift_compare.py`）：單元測試與突變檢查完成
-- [ ] 漂移模擬的正式結果（待重新下載較大範圍的海流與風後執行）
+- [x] 漂移模擬的正式結果（`data/drift_vs_reference.csv`）：與文獻不一致，照實記錄
+- [x] 漂移模擬的圖（`drift_plot.py`）：靜態圖與動畫
+- [ ] 把粒子位置放進介面頁（尚未決定是否做）
 
 ## 參考資料
 
