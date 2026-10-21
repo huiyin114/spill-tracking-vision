@@ -53,6 +53,17 @@
 - 處理：`wind.py` 讀月報表，輸出逐時表 `data/wind_hourly.csv`，並對每次衛星過境、每個測站列出時間最近的一到兩筆觀測 `data/wind_at_passes.csv`（時間差上限 30 分鐘）。Sentinel-2 的過境皆約在台灣時間 10:25，介於 10 時與 11 時兩筆觀測之間，所以兩筆都列出。
 
 
+### 特徵表（`features.py`）
+
+把時間軸與風整成兩張表，之後加新變數（海流、潮汐…）只要多一個讀取程式和多幾列，不必改欄位。
+
+- `data/passes.csv`：每次過境一列，只放不變的屬性（感測器、時間、軌道、是否涵蓋、配對的無人機日）。過境識別碼 `pass_id` = 感測器 + UTC 時間（到秒）。
+- `data/features_long.csv`：每次過境、每個變數、每個來源一列（`pass_id, variable, source, value, unit, gap_min`）。這次過境不適用的變數沒有列；有查但沒值就留一列、值為空，不用 0 代替。
+- `data/features_wide.csv`：每次過境一列的寬表，欄名為「變數@來源」。同一過境有兩筆觀測時（Sentinel-2 都夾在兩個整點之間）取時間差絕對值較小的一筆，一樣近取較早的；這只是暫時的取法，不代表最適合，長表保留兩筆。
+- 變數與單位登記在 `features.VARIABLES`。
+
+指令：`python features.py --timeline data/timeline.csv --wind data/wind_at_passes.csv --out-passes data/passes.csv --out data/features_long.csv --out-wide data/features_wide.csv`
+
 ## 進度
 
 - [x] 文獻起點：JpGU 2025 摘要
@@ -61,6 +72,7 @@
 - [x] 無人機清單與每日摘要
 - [x] 時間軸對齊：衛星過境與無人機出勤
 - [x] 風：CODiS 三個測站的逐時風與各次過境的風
+- [x] 長格式特徵表（`features.py`）：各次過境的所有變數整成一張表
 - [ ] 海流與潮汐
 - [ ] 雷達暗區偽陽性過濾
 - [ ] 漂移模擬與比對
