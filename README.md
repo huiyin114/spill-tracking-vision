@@ -23,6 +23,10 @@ python extract_ocean.py --current-nc data/raw/cmems/<海流檔>.nc --wind-nc dat
 python ocean.py --timeline data/timeline.csv --ocean data/ocean_at_wreck.csv --out data/ocean_at_passes.csv
 python features.py --timeline data/timeline.csv --wind data/wind_at_passes.csv --ocean data/ocean_at_passes.csv --out-passes data/passes.csv --out data/features_long.csv --out-wide data/features_wide.csv
 python reference.py --reference data/reference_observations.csv --passes data/passes.csv --out data/reference_matched.csv
+# 漂移模擬：drift_sim.py 要在 opendrift 環境執行；粒子表是模擬輸出，執行一次約幾分鐘
+python drift_sim.py --current-nc data/raw/cmems/<海流檔>.nc --wind-nc data/raw/cmems/<風檔>.nc --wind-drift-factor 0.03 --out data/drift_particles_base.csv
+python drift_sim.py --current-nc data/raw/cmems/<海流檔>.nc --wind-nc data/raw/cmems/<風檔>.nc --wind-drift-factor 0.02 --out data/drift_particles_wind002.csv
+python drift_compare.py --particles base=data/drift_particles_base.csv wind002=data/drift_particles_wind002.csv --matched data/reference_matched.csv --passes data/passes.csv --out data/drift_vs_reference.csv
 python build_page.py --data data --template site/template.html --out site/index.html
 ```
 
@@ -36,6 +40,8 @@ python build_page.py --data data --template site/template.html --out site/index.
 | `timeline.py` | 衛星過境、無人機出勤、事件時間放到同一條時間軸 |
 | `wind.py` | 氣象署測站逐時風，與各次過境對齊 |
 | `extract_ocean.py`、`ocean.py` | 模型海流與模型風：抽沉船最近格點的逐時序列、換算速度與方向、對齊到各次過境 |
+| `drift_sim.py` | 用 OpenDrift 的 OpenOil 模擬沉船處釋放的油漂移（在 opendrift 環境執行） |
+| `drift_compare.py` | 模擬的粒子位置與文獻的方向、最遠距離並列 |
 | `features.py` | 整成長格式特徵表 |
 | `reference.py` | 外部文獻估計值與過境的對應 |
 | `page_data.py`、`build_page.py`、`site/` | 產生統一介面頁 |
@@ -68,7 +74,7 @@ python build_page.py --data data --template site/template.html --out site/index.
 
 1. 事件期間所有可用的衛星過境與無人機出勤，放到同一條時間軸：**完成**。
 2. 為每個觀測補上同時間的物理條件：**已完成風（氣象署測站）、模型海流與模型風（Copernicus Marine，沉船最近格點）**。氣象署公開的海象資料只有最近 48 小時與 30 天，取不到 2023 年，所以海流改用 Copernicus Marine。模型資料只下載 2023-07-20 至 07-29，所以 18 次過境中只有 3 次（7/22 S1、7/24 S2、7/27 S1）有模型值。潮汐沒有另外處理，所用的海流資料集是否含潮流尚未確認。
-3. 以沉船為污染源做漂移模擬並與觀測比對：**進行中**（以 OpenDrift 模擬，尚未完成）。
+3. 以沉船為污染源做漂移模擬並與觀測比對：**程式完成，正式結果待產生**（OpenDrift；只比方向與距離，見「漂移模擬」）。
 4. 另外評估過、**未做**：雷達暗區偽陽性過濾。
 
 因為沒有油膜面積的自動偵測，專案裡沒有任何「驗證」文獻數字的結果；文獻估計值只是並列顯示。
@@ -107,6 +113,18 @@ python build_page.py --data data --template site/template.html --out site/index.
 - 沉船附近：海流有陸地遮罩，離沉船最近的有效格點是 22.5833°N、120.1667°E（5.01 km）；風最近的格點 22.5625°N、120.1875°E（5.54 km），沒有缺值。程式取「最近的有效格點」，不內插；這是假設，不是沉船位置的值。
 
 ## 程式與輸出說明
+
+### 漂移模擬（`drift_sim.py`、`drift_compare.py`）
+
+用 OpenDrift 1.14.12 的 `OpenOil`，在沉船位置一次釋放粒子，用上面的模型海流與風推動，輸出粒子位置表；`drift_compare.py` 再把粒子位置和文獻的方向、最遠距離並列。設定（都是假設，不是觀測）：
+
+- 釋放：沉船位置、沉沒時間 2023-07-20 21:30 UTC、一次釋放 1000 顆。油實際何時、漏多久、漏多少都不知道；粒子數只影響統計平滑度，不代表油量。船上油量 491.848 t 是總載量，不是外洩量。
+- 油種：`AMSA Average Very Low Sulfur Fuel Oil (VLSFO)`。依據：Taiwan News（2023-07-22）報導天使輪沉沒時載有低硫燃油 393.4 t、輕柴油 98.1 t、潤滑油 0.348 t；「低硫燃油 = VLSFO」是我們的對應，不是報導寫的。輕柴油（約 20%）沒有模擬。
+- 風漂移係數：OpenDrift 1.14.12 預設 0.03（風向量的 3%，另加海流與 Stokes drift；我們用單元測試確認過 3% 的語意）。沒有海浪資料，Stokes drift 用內建備用值 0，所以實際只有這個係數。事先固定兩組：0.03 與 0.02，看結果之後不追加、不挑選。
+- 其他用 OpenDrift 預設：海流隨機擾動 0.05 m/s、風擾動 0.5 m/s、岸邊擱淺、風化過程全開；隨機種子固定為 0，結果可重現。計算步長 15 分鐘，輸出每小時。
+- 擱淺：OpenDrift 的結果在粒子擱淺後位置會消失，但油還在岸上；`result_to_table` 讓擱淺粒子保留最後位置。飄出資料範圍的粒子（`missing_data`）位置維持空。
+- 比對：只比方向與 7/27 的最遠距離。不比面積（模擬沒有對應的量）。方向只列「重心方位與東南（135 度）差幾度」，不做通過／不通過的判定；最遠距離同時列最遠一顆與 95% 分位數。結果在 `data/drift_vs_reference.csv`。這是並列，不是驗證：文獻數字是研究者的判釋估計。
+- 方向與文獻不一致時照實寫；可能原因（推測，未驗證）包括海流 1/12° 的解析度、沒有海浪、風來源是 stress-equivalent wind、釋放時間假設。不為了接近文獻調整參數。
 
 ### 模型海流與風（`extract_ocean.py`、`ocean.py`）
 
@@ -195,12 +213,13 @@ python build_page.py --data data --template site/template.html --out site/index.
 - [x] 模型海流與模型風（`extract_ocean.py`、`ocean.py`）：沉船最近格點，對齊到各次過境
 - [ ] 潮汐（沒有另外處理）
 - [ ] 雷達暗區偽陽性過濾（未做）
-- [ ] 漂移模擬與比對（進行中）
+- [x] 漂移模擬與比對的程式（`drift_sim.py`、`drift_compare.py`）：單元測試與突變檢查完成
+- [ ] 漂移模擬的正式結果（待重新下載較大範圍的海流與風後執行）
 
 ## 參考資料
 
 - Chu, C.-H., Chen, C.-F., & Wu, C.-C. (2025). Application of Remote Sensing Technology in Monitoring Oil Pollution from Ship Grounding Incidents. JpGU Meeting 2025, U03-P04. https://pub.confit.atlas.jp/ja/event/jpgu2025/presentation/U03-P04
-- Taiwan News（2023-07-22）。Doksuri could hamper efforts to recover 600 containers from sunken ship off south Taiwan. https://www.taiwannews.com.tw/en/news/4951068
+- Taiwan News（2023-07-22）。Doksuri could hamper efforts to recover 600 containers from sunken ship off south Taiwan. https://www.taiwannews.com.tw/en/news/4951068 （報導杜蘇芮影響打撈；同篇記載船上燃油：低硫燃油 393.4 t、輕柴油 98.1 t、潤滑油 0.348 t）
 - 公視新聞（2023-08-02）。天使輪沉沒貨櫃漂流 海保署持續清除外溢油污。 https://news.pts.org.tw/article/649308
 - 國家運輸安全調查委員會。1120720 ANGEL貨櫃船高雄港外海沉沒事故. https://www.ttsb.gov.tw/1243/22344/38984/post （沉沒時間、事故經過）
 - 交通部航港局。礙航公告(南區)「天使輪」於高雄港第二錨區沉船位置更新（2023-08-01）. https://www.motcmpb.gov.tw/Information/Detail/90093f9c-34af-4a8c-82a3-7018cc21d57e?SiteId=1&NodeId=483 （沉船座標）
@@ -209,6 +228,7 @@ python build_page.py --data data --template site/template.html --out site/index.
 - Copernicus Data Space Ecosystem. CDSE STAC API 的 OpenAPI 描述. https://stac.dataspace.copernicus.eu/v1/api （`/search` 的 collections、bbox、datetime、limit 參數說明；互動版為 https://stac.dataspace.copernicus.eu/v1/api.html ）
 - STAC API – Item Search 規範. https://github.com/radiantearth/stac-api-spec/blob/main/item-search/README.md （上述參數的標準定義，以及 bbox 順序、datetime 區間與 next 連結的規則）
 - Copernicus Marine Service. Global Ocean Hourly Reprocessed Sea Surface Wind and Stress from Scatterometer and Model（WIND_GLO_PHY_L4_MY_012_006），DOI 10.48670/moi-00185. https://data.marine.copernicus.eu/product/WIND_GLO_PHY_L4_MY_012_006/ （產品名稱與代碼；資料集名稱、變數與 stress-equivalent 說明取自下載檔的屬性）
+- OpenDrift 1.14.12（`OpenOil` 的設定名稱、預設值與油品資料庫取自該版本本身的設定）. https://github.com/OpenDrift/opendrift
 - Copernicus Marine Service. Global Ocean Physics Analysis and Forecast（GLOBAL_ANALYSISFORECAST_PHY_001_024）. https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/ （逐時表層海流資料集；2023 年 7 月資料實際下載確認存在）
 - 中央氣象署. 氣候觀測資料查詢服務（CODiS）. https://codis.cwa.gov.tw/ （測站清單、逐時風速與風向月報表；查詢日期 2026-10-11）
 - 中央氣象署. 氣候觀測資料查詢服務—觀測資料說明（Ver.2025.12.31）. 於 CODiS 測站資料頁的「資料說明」下載 （站碼意義、逐時風的定義、符號說明）

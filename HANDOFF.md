@@ -50,12 +50,13 @@
 | 時間軸：衛星過境對無人機出勤（無人機選填） | `timeline.py`、`test_timeline.py`、`data/timeline.csv` |
 | 風：CODiS 三站逐時風與各次過境的風 | `wind.py`、`test_wind.py`、`data/stations.csv`、`data/wind_hourly.csv`、`data/wind_at_passes.csv` |
 | 模型海流與模型風：沉船最近有效格點的逐時 u/v（`extract_ocean.py`，在 opendrift 環境執行）、速度方向換算與對齊過境（`ocean.py`）、進特徵表四個變數 | `extract_ocean.py`、`ocean.py`、`test_extract_ocean.py`、`test_ocean.py`、`data/ocean_at_wreck.csv`、`data/ocean_at_passes.csv` |
+| 漂移模擬程式（`drift_sim.py`，OpenDrift OpenOil，在 opendrift 環境執行；擱淺粒子保留位置）與文獻並列（`drift_compare.py`，方向與最遠距離） | `drift_sim.py`、`drift_compare.py`、`test_drift_sim.py`、`test_drift_compare.py` |
 | 長格式特徵表 | `features.py`、`test_features.py`、`data/passes.csv`、`data/features_long.csv`、`data/features_wide.csv` |
 | 外部參考觀測（JpGU 三個數字）與過境對應 | `reference.py`、`test_reference.py`、`data/reference_observations.csv`、`data/reference_matched.csv` |
 | 統一介面頁 | `page_data.py`、`build_page.py`、`site/template.html`、`site/index.html`、`test_page_data.py`、`test_build_page.py` |
 | README（快速開始、專案結構、目標與實際完成範圍、擴充指南）、`requirements.txt` | `README.md`、`requirements.txt` |
 
-共 241 個測試（本機 .venv 沒有 xarray 時 2 個讀 NetCDF 的測試會跳過，在 opendrift 環境全部執行）。原始資料（STAC JSON、CODiS CSV）放在 `data/raw/`，不進版控。README 的重現指令已在乾淨副本實際執行，輸出與已提交的檔案逐位元相同。
+共 304 個測試（沒有 xarray 或 OpenDrift 的環境，5 個相關測試會跳過；在雲端用 OpenDrift 1.14.12 與在有 xarray 的環境都實際跑過）。原始資料（STAC JSON、CODiS CSV）放在 `data/raw/`，不進版控。README 的重現指令已在乾淨副本實際執行，輸出與已提交的檔案逐位元相同。
 
 ## 已定的規則
 
@@ -69,7 +70,9 @@
 
 ## 待辦
 
-1. 階段 11（海流與模型風進特徵表）已完成。下一步：階段 13 OpenDrift 漂移模擬（在 `opendrift` 環境；沉船位置釋放、釋放時間假設為沉沒時間；風漂移係數先對照現行 OpenDrift 文件；只比對方向與 7/27 最遠距離 26.5 km；方向不一致也要如實報告，不調參數去對）；之後階段 14 頁面顯示粒子位置。
+1. 階段 11（海流與模型風進特徵表）、階段 13 的程式（`drift_sim.py`、`drift_compare.py`）已完成。**卡在資料範圍**：目前下載的海流（經 119.83–121.17、緯 22.0–23.17）與風（119.56–121.44、21.81–23.44）太小，預覽模擬在 2023-07-23 17:30 UTC 就因粒子飄出海流範圍而停，到不了 7/24 S2 與 7/26 S1 過境。已請使用者兩個檔案都重新下載成經度 118.0–122.0、緯度 21.0–25.0（時間不變）。收到新檔後：重跑 `extract_ocean.py`（沉船最近格點不變，`ocean_at_wreck.csv` 數字應不變，要確認）、在 opendrift 環境跑兩組模擬（風漂移係數 0.03、0.02，事先固定，不追加）、`drift_compare.py` 並列、再寫 README／AI_LOG／報告。
+   - 雲端預覽（不是正式結果，環境與使用者的不同）：預設設定下粒子先往北再往西北，7/22 晚上約三成粒子在約 23.05°N、120.05°E 擱淺，其餘在 7/23 下午碰到資料北界。沒有調任何參數。方向與文獻（東南）是否一致，等正式跑完照實寫，不調參數去對。
+   - 之後階段 14 頁面顯示粒子位置（尚未決定是否做）。
 2. 報告（階段 10 的 B）：預計做成可匯出 Word／PDF 的文件（Docs）。要如實寫入：範圍縮減與原因、資料限制、AI 協作中 AI 出的錯（見 `AI_LOG.md`）。
 3. 繳交前使用者自己確認：GitHub 倉庫能被助教開啟（用無痕視窗測）、git log 清楚、在自己的 Windows 環境 `pip install -r requirements.txt` 後 `python -m pytest` 全過。
 
