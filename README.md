@@ -144,6 +144,8 @@ python build_page.py --data data --template site/template.html --out site/index.
 - 係數 0.03 時約 7 成粒子在 7/22 晚上就擱淺在台灣西南岸（約 23.05°N，取自雲端預覽的同一份資料），所以 7/24、7/27 的位置多半是擱淺位置；係數 0.02 時粒子較晚才靠岸（7/27 只有 13 顆擱淺）。
 - 這個結果只說明「在這些假設與這兩個資料來源下」模擬往北漂；它不能證明文獻有錯，也不能證明模擬正確。文獻數字是會議摘要裡的判釋估計，方法未公開。
 
+SMOC 海流版本（波浪與潮汐）：`python drift_sim.py --current-nc <SMOC .nc> --current-variables utotal vtotal --wind-nc <風 .nc> --wind-drift-factor 0.03 --out data/drift_particles_smoc003.csv`（0.02 輸出 `_smoc002.csv`）。SMOC 的總流已含波浪與潮汐，所以關掉 OpenDrift 另外加的斯托克斯漂移，避免重複計算。粒子全部擱淺後，擱淺位置維持到結束時間，過境時刻才有位置可比。雲端預覽：方向仍是北北西（約 342°），沒有比較接近文獻。
+
 圖（`drift_plot.py`，輸出到 `figures/`）：每個文獻對應的過境一張靜態圖（兩個模擬並排：粒子、重心與重心軌跡、沉船、25／50／100 km 距離圈、文獻方向與最遠距離圈）、一段動畫 `drift_animation.gif`。陸地用 OpenDrift 擱淺判斷所用的同一份陸地遮罩，不需要另外下載底圖。圖上的文字是英文。文獻方向的箭頭只表示方向，長度沒有意義。畫圖程式沒有單元測試，只用眼睛檢查圖；有測試的是方位與距離換算、地圖範圍、動畫時間、重心軌跡。
 
 ### 模型海流與風（`extract_ocean.py`、`ocean.py`）

@@ -130,3 +130,151 @@ def test_wind_drift_factor_moves_oil_by_that_fraction_of_the_wind():
     last = t[t["time_utc"] == t["time_utc"].max()]
     # 3% × 10 m/s = 0.3 m/s，一小時 1.08 km
     assert (last["lon"] - 120.0).mean() == pytest.approx(1.08 / 103.1, rel=0.05)
+
+
+def _write_smoc_like(path, utotal, uo, vsdx):
+    """造一個像 SMOC 的小檔案：uo、utotal、vsdx 都有，單位 m/s，全部往東；沒有 y 分量時用 0。"""
+    xr = pytest.importorskip("xarray")
+    pytest.importorskip("netCDF4")
+    t = pd.date_range("2023-07-20 00:00", periods=4, freq="h")
+    lat = np.array([21.5, 22.0, 22.5, 23.0])
+    lon = np.array([119.5, 120.0, 120.5, 121.0])
+    full = lambda v: np.full((4, 1, 4, 4), float(v))
+    attrs = lambda name: {"standard_name": name, "units": "m s-1"}
+    # utotal、vtotal 放在 uo、vo 前面，確認指定的變數優先，不是靠變數順序
+    ds = xr.Dataset(
+        {"utotal": (("time", "depth", "latitude", "longitude"), full(utotal), attrs("surface_sea_water_x_velocity")),
+         "vtotal": (("time", "depth", "latitude", "longitude"), full(0), attrs("surface_sea_water_y_velocity")),
+         "uo": (("time", "depth", "latitude", "longitude"), full(uo), attrs("eastward_sea_water_velocity")),
+         "vo": (("time", "depth", "latitude", "longitude"), full(0), attrs("northward_sea_water_velocity")),
+         "vsdx": (("time", "depth", "latitude", "longitude"), full(vsdx), attrs("sea_surface_wave_stokes_drift_x_velocity")),
+         "vsdy": (("time", "depth", "latitude", "longitude"), full(0), attrs("sea_surface_wave_stokes_drift_y_velocity"))},
+        coords={"time": t, "depth": [0.49], "latitude": lat, "longitude": lon})
+    ds.to_netcdf(path)
+
+
+def _write_wind_zero(path):
+    xr = pytest.importorskip("xarray")
+    pytest.importorskip("netCDF4")
+    t = pd.date_range("2023-07-20 00:00", periods=4, freq="h")
+    lat = np.array([21.5, 22.0, 22.5, 23.0])
+    lon = np.array([119.5, 120.0, 120.5, 121.0])
+    z = np.zeros((4, 4, 4))
+    attrs = lambda name: {"standard_name": name, "units": "m s-1"}
+    xr.Dataset({"eastward_wind": (("time", "latitude", "longitude"), z, attrs("eastward_wind")),
+                "northward_wind": (("time", "latitude", "longitude"), z, attrs("northward_wind"))},
+               coords={"time": t, "latitude": lat, "longitude": lon}).to_netcdf(path)
+
+
+def _drift_km_east(model):
+    model.set_config("drift:current_uncertainty", 0.0)
+    model.set_config("drift:wind_uncertainty", 0.0)
+    model.set_config("drift:vertical_mixing", False)
+    model.set_config("general:use_auto_landmask", False)
+    model.set_config("environment:constant:land_binary_mask", 0)
+    model.seed_elements(lon=120.0, lat=22.0, time=pd.Timestamp("2023-07-20 00:30").to_pydatetime(), number=3, radius=0)
+    model.run(duration=pd.Timedelta(hours=1).to_pytimedelta(), time_step=900, time_step_output=3600)
+    t = drift_sim.result_to_table(model.result, model.status_categories)
+    last = t[t["time_utc"] == t["time_utc"].max()]
+    return float((last["lon"] - 120.0).mean()) * 103.1
+
+
+def test_smoc_like_total_current_is_used_and_stokes_is_not_counted_twice(tmp_path):
+    pytest.importorskip("opendrift")
+    cur, wind = tmp_path / "c.nc", tmp_path / "w.nc"
+    _write_smoc_like(cur, utotal=1.0, uo=0.0, vsdx=1.0)          # 總和 1 m/s；環流 0；Stokes 1 m/s（已含在總和裡）
+    _write_wind_zero(wind)
+    m = drift_sim.build_model(cur, wind, wind_drift_factor=0.0, current_variables=("utotal", "vtotal"))
+    assert _drift_km_east(m) == pytest.approx(3.6, rel=0.03)      # 只算總和：3.6 km；若又加 Stokes 會是 7.2 km；若用 uo 會是 0
+
+
+def test_without_current_variables_the_file_is_read_by_standard_names(tmp_path):
+    pytest.importorskip("opendrift")
+    cur, wind = tmp_path / "c.nc", tmp_path / "w.nc"
+    _write_smoc_like(cur, utotal=5.0, uo=1.0, vsdx=0.0)           # 沒指定時用 uo（1 m/s），不是 utotal（5 m/s）
+    _write_wind_zero(wind)
+    m = drift_sim.build_model(cur, wind, wind_drift_factor=0.0)
+    assert _drift_km_east(m) == pytest.approx(3.6, rel=0.03)
+
+
+# ---- 模擬提早結束（粒子都停用）時延續最後的狀態 ----
+
+def _final_table(statuses, lons=None):
+    t = pd.Timestamp("2023-07-23 04:30", tz="UTC")
+    lons = lons or [120.0 + 0.1 * i for i in range(len(statuses))]
+    return pd.DataFrame({"time_utc": [t] * len(statuses), "particle": range(len(statuses)),
+                         "lon": [x if s != "missing_data" else np.nan for x, s in zip(lons, statuses)],
+                         "lat": [23.0] * len(statuses), "status": statuses})
+
+
+def test_hold_until_keeps_stranded_positions_and_clears_other_positions():
+    t = _final_table(["stranded", "missing_data"])
+    out = drift_sim.hold_until(t, pd.Timestamp("2023-07-23 07:30", tz="UTC"), 3600)
+    later = out[out["time_utc"] > t["time_utc"].max()]
+    assert sorted(later["time_utc"].unique()) == [pd.Timestamp(f"2023-07-23 0{h}:30", tz="UTC") for h in (5, 6, 7)]
+    s = later[later["particle"] == 0]
+    assert (s["status"] == "stranded").all() and (s["lon"] == 120.0).all() and (s["lat"] == 23.0).all()
+    m = later[later["particle"] == 1]
+    assert (m["status"] == "missing_data").all() and m["lon"].isna().all()
+
+
+def test_hold_until_does_nothing_when_the_run_already_reaches_the_end():
+    t = _final_table(["stranded"])
+    assert drift_sim.hold_until(t, pd.Timestamp("2023-07-23 04:30", tz="UTC"), 3600) is t
+    assert drift_sim.hold_until(t, pd.Timestamp("2023-07-23 05:20", tz="UTC"), 3600) is t     # 不足一個輸出步長
+
+
+def test_hold_until_refuses_when_particles_are_still_active():
+    with pytest.raises(ValueError, match="active"):
+        drift_sim.hold_until(_final_table(["stranded", "active"]), pd.Timestamp("2023-07-24", tz="UTC"), 3600)
+
+
+def test_hold_until_uses_the_output_step_and_original_rows_are_unchanged():
+    t = _final_table(["stranded"])
+    out = drift_sim.hold_until(t, pd.Timestamp("2023-07-23 06:30", tz="UTC"), 1800)
+    assert len(out) == 1 + 4
+    assert out.iloc[0].to_dict() == t.iloc[0].to_dict()
+
+
+def test_hold_until_uses_final_states_for_particles_that_stopped_after_the_last_output():
+    t = _final_table(["stranded", "active", "active"])
+    final = pd.DataFrame({"particle": [1, 2], "status": ["stranded", "missing_data"],
+                          "lon": [121.5, 119.0], "lat": [23.2, 23.3]})
+    out = drift_sim.hold_until(t, pd.Timestamp("2023-07-23 06:30", tz="UTC"), 3600, final)
+    nxt = out[out["time_utc"] == pd.Timestamp("2023-07-23 05:30", tz="UTC")].set_index("particle")
+    assert nxt.loc[1, "status"] == "stranded" and nxt.loc[1, "lon"] == 121.5 and nxt.loc[1, "lat"] == 23.2
+    assert nxt.loc[2, "status"] == "missing_data" and nxt.loc[2, "lon"] == 119.0     # 停用當下的位置還在
+    assert nxt.loc[0, "lon"] == 120.0                                   # 原本就擱淺的不受影響
+    last = out[out["time_utc"] == pd.Timestamp("2023-07-23 06:30", tz="UTC")].set_index("particle")
+    assert last.loc[1, "lon"] == 121.5 and np.isnan(last.loc[2, "lon"])    # 擱淺的位置繼續延續，missing_data 之後沒有位置
+    assert out["time_utc"].nunique() == 3 and not (out["status"] == "active").iloc[len(t):].any()
+
+
+def test_hold_until_final_state_frame_is_not_added_when_the_run_reached_its_end():
+    t = _final_table(["stranded", "active"])
+    final = pd.DataFrame({"particle": [1], "status": ["stranded"], "lon": [121.5], "lat": [23.2]})
+    assert drift_sim.hold_until(t, pd.Timestamp("2023-07-23 04:30", tz="UTC"), 3600, final) is t
+
+
+def test_hold_until_refuses_when_a_still_active_particle_has_no_final_state():
+    t = _final_table(["stranded", "active", "active"])
+    final = pd.DataFrame({"particle": [1], "status": ["stranded"], "lon": [121.5], "lat": [23.2]})
+    with pytest.raises(ValueError, match="沒有最後的狀態"):
+        drift_sim.hold_until(t, pd.Timestamp("2023-07-24", tz="UTC"), 3600, final)
+
+
+def test_hold_until_final_state_when_only_one_step_remains():
+    t = _final_table(["active"])
+    final = pd.DataFrame({"particle": [0], "status": ["stranded"], "lon": [121.5], "lat": [23.2]})
+    out = drift_sim.hold_until(t, pd.Timestamp("2023-07-23 05:30", tz="UTC"), 3600, final)
+    assert len(out) == 2 and out.iloc[1]["status"] == "stranded" and out.iloc[1]["lon"] == 121.5
+
+
+def test_deactivated_table_converts_openDrift_elements():
+    ed = types.SimpleNamespace(ID=np.array([709, 3]), status=np.array([1.0, 2.0]),
+                               lon=np.array([120.05, 119.0]), lat=np.array([23.18, 23.5]))
+    model = types.SimpleNamespace(elements_deactivated=ed, status_categories=["active", "stranded", "missing_data"])
+    t = drift_sim.deactivated_table(model)
+    assert list(t.columns) == ["particle", "status", "lon", "lat"]
+    assert t["particle"].tolist() == [709, 3] and t["status"].tolist() == ["stranded", "missing_data"]
+    assert t["lon"].tolist() == [120.05, 119.0] and t["lat"].tolist() == [23.18, 23.5]
