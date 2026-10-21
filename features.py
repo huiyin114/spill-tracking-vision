@@ -67,8 +67,8 @@ def build_features_long(timeline, wind_at_passes):
     times = pd.to_datetime(timeline["time_utc"], utc=True)
     for (_, p), t in zip(timeline.iterrows(), times):
         pid = make_pass_id(p["sensor"], t)
-        if pd.notna(p["hours_since_sinking"]):
-            add(pid, "hours_since_event", "event", p["hours_since_sinking"])
+        if pd.notna(p["hours_since_event"]):
+            add(pid, "hours_since_event", "event", p["hours_since_event"])
         if pd.notna(p["cloud_cover_min"]):
             add(pid, "cloud_cover_min", "stac", p["cloud_cover_min"])
         if pd.notna(p["drone_gap_hours"]):

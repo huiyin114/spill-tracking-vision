@@ -1,21 +1,23 @@
 """讀取 Copernicus STAC 搜尋結果，整理成「一個影像一列」的表格。
 
-用法：python catalog.py data/raw/stac_s1.json
+用法：python catalog.py data/raw/stac_s1.json [--lat ... --lon ... --start ... --end ...]
 """
+import argparse
 import json
-import sys
 
 import pandas as pd
 from shapely.geometry import Point, shape
 
-from event import WRECK_LAT, WRECK_LON
-
-# shapely 的座標順序是 (x, y) = (經度, 緯度)，和平常說「緯度、經度」相反
-WRECK = Point(WRECK_LON, WRECK_LAT)
+from event import ANGEL, add_event_args, event_from_args
 
 
-def load_items(path):
-    """讀 STAC JSON，回傳 DataFrame（一個 item 一列，依時間排序）。"""
+def load_items(path, event=ANGEL):
+    """讀 STAC JSON，回傳 DataFrame（一個 item 一列，依時間排序）。
+
+    covers_wreck 指影像涵蓋 event 的位置（欄名沿用「沉船」，換事件時指事件位置）。
+    """
+    # shapely 的座標順序是 (x, y) = (經度, 緯度)，和平常說「緯度、經度」相反
+    here = Point(event.lon, event.lat)
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
@@ -37,7 +39,7 @@ def load_items(path):
             "cloud_cover": p.get("eo:cloud_cover"),  # 只有 Sentinel-2 有
             "bbox": item["bbox"],
             # 影像實際涵蓋範圍（多邊形）是否包含沉船；bbox 只是外框，不能拿來判斷
-            "covers_wreck": shape(item["geometry"]).contains(WRECK),
+            "covers_wreck": shape(item["geometry"]).contains(here),
         })
 
     df = pd.DataFrame(rows)
@@ -70,7 +72,11 @@ def group_passes(items, gap_minutes=10):
 
 
 if __name__ == "__main__":
-    items = load_items(sys.argv[1])
+    ap = argparse.ArgumentParser(description="STAC 搜尋結果整理成每次過境一列")
+    ap.add_argument("stac_json", help="STAC 搜尋結果 JSON")
+    add_event_args(ap)
+    args = ap.parse_args()
+    items = load_items(args.stac_json, event_from_args(ap, args))
     passes = group_passes(items)
     print(f"{len(items)} 筆影像 → {len(passes)} 次過境")
     print(passes.drop(columns=["time_utc"]).to_string())

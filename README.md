@@ -64,6 +64,23 @@
 
 指令：`python features.py --timeline data/timeline.csv --wind data/wind_at_passes.csv --out-passes data/passes.csv --out data/features_long.csv --out-wide data/features_wide.csv`
 
+### 換成其他事件（`event.py`）
+
+事件由 `Event` 描述：
+- 必填：參考位置 `lat`、`lon`（十進位度）與分析期間 `start`、`end`（含頭尾兩天）。
+- 選填：事件發生時間 `time`（沒有就不算「距事件幾小時」，`hours_since_event` 留空，不會是 0）、名稱 `name`、時區 `tz`（用來解讀 start、end 與命令列給的沒有時區的時間，預設 Asia/Taipei）。
+- 沒指定事件時一律用天使輪（`event.ANGEL`），所以原本的指令與輸出不變。
+
+`catalog.py`、`timeline.py`、`wind.py` 的命令列都接受 `--lat --lon --start --end`（換事件時四個都要給）與選填的 `--event-time "YYYY-MM-DD HH:MM"`、`--event-name`、`--tz`。`timeline.py` 的 `--drone` 是選填，不給就沒有無人機欄位。程式裡則是各函式的 `event=` 參數。
+
+例（虛構位置，只示範參數）：
+`python timeline.py --s1 s1.json --s2 s2.json --lat 28.7 --lon -88.4 --start 2030-01-10 --end 2030-01-20 --event-time "2030-01-12 05:00" --tz UTC --out timeline.csv`
+
+限制：
+- 風資料只能用氣象署 CODiS，也就是只涵蓋台灣的測站；別的地區要另寫風資料的讀取程式（例如 ERA5），表格欄位不用改。
+- 表裡的欄位名稱沿用天使輪時的叫法（`covers_wreck`、`time_tw`）；換事件時 `covers_wreck` 指「涵蓋事件位置」。
+- 分析期間目前只用來篩衛星過境；風與無人機資料用你給的檔案，不另外裁切。
+
 ## 進度
 
 - [x] 文獻起點：JpGU 2025 摘要
@@ -73,6 +90,7 @@
 - [x] 時間軸對齊：衛星過境與無人機出勤
 - [x] 風：CODiS 三個測站的逐時風與各次過境的風
 - [x] 長格式特徵表（`features.py`）：各次過境的所有變數整成一張表
+- [x] 事件參數可替換（`event.py`）：位置、期間、發生時間可換；無人機選填；`hours_since_sinking` 改名 `hours_since_event`
 - [ ] 海流與潮汐
 - [ ] 雷達暗區偽陽性過濾
 - [ ] 漂移模擬與比對

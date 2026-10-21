@@ -51,11 +51,11 @@ def test_gap_hours_sign(t, expected):
 
 # ---------- build_timeline ----------
 
-def test_hours_since_sinking():
+def test_hours_since_event():
     after = pd.Timestamp(SINKING_TIME + timedelta(hours=24.4)).tz_convert("UTC")
     before = pd.Timestamp(SINKING_TIME - timedelta(hours=2)).tz_convert("UTC")
     result = timeline([make_pass(after), make_pass(before)], days_df())
-    assert list(result["hours_since_sinking"]) == [-2.0, 24.4]
+    assert list(result["hours_since_event"]) == [-2.0, 24.4]
 
 
 def test_pairs_with_same_day_drone():

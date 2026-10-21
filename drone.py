@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from event import TAIWAN, WRECK_LAT, WRECK_LON
+from event import ANGEL, TAIWAN
 
 EARTH_RADIUS_KM = 6371.0088
 
@@ -28,11 +28,11 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(a))
 
 
-def load_photos(path):
+def load_photos(path, event=ANGEL):
     """讀 EXIF 清單，一張照片一列，依拍攝時間排序。
 
     EXIF 時間沒有時區標記，經資料提供者確認為台灣當地時間，所以先標成台灣時間，
-    再換算成 UTC（衛星時間是 UTC）。並加上離沉船的距離 dist_km。
+    再換算成 UTC（衛星時間是 UTC）。並加上離事件位置的距離 dist_km。
     """
     photos = pd.read_csv(path, encoding="utf-8-sig")
 
@@ -43,7 +43,7 @@ def load_photos(path):
     photos["time_tw"] = taken.dt.tz_localize(TAIWAN)
     photos["time_utc"] = photos["time_tw"].dt.tz_convert("UTC")
     photos["date_tw"] = photos["time_tw"].dt.strftime("%Y-%m-%d")
-    photos["dist_km"] = haversine_km(photos["lat"], photos["lon"], WRECK_LAT, WRECK_LON)
+    photos["dist_km"] = haversine_km(photos["lat"], photos["lon"], event.lat, event.lon)
     return photos.sort_values("time_tw").reset_index(drop=True)
 
 

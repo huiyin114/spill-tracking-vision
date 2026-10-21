@@ -10,10 +10,10 @@ def make_timeline():
     """兩次過境：S2 有雲量、配對到無人機；S1 沒有雲量、沒有無人機。"""
     return pd.DataFrame([
         {"sensor": "S2", "time_tw": "2023-07-24 10:25:39+08:00", "time_utc": "2023-07-24 02:25:39+00:00",
-         "hours_since_sinking": 77.0, "orbit_state": "", "mode": "", "covers_wreck": True,
+         "hours_since_event": 77.0, "orbit_state": "", "mode": "", "covers_wreck": True,
          "cloud_cover_min": 12.5, "drone_date": "2023-07-25", "drone_gap_hours": 20.0, "drone_n_near": 8},
         {"sensor": "S1", "time_tw": "2023-07-22 06:00:00+08:00", "time_utc": "2023-07-21 22:00:00+00:00",
-         "hours_since_sinking": 24.5, "orbit_state": "ascending", "mode": "IW", "covers_wreck": False,
+         "hours_since_event": 24.5, "orbit_state": "ascending", "mode": "IW", "covers_wreck": False,
          "cloud_cover_min": np.nan, "drone_date": np.nan, "drone_gap_hours": np.nan, "drone_n_near": np.nan},
     ])
 

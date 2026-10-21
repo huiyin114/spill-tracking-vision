@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from drone import haversine_km
-from event import TAIWAN, WRECK_LAT, WRECK_LON
+from event import ANGEL, TAIWAN, add_event_args, event_from_args
 from timeline import gap_hours
 
 # 風速在此值以下，資料說明規定風向記為 0（不是北風），所以風向視為沒有。
@@ -121,8 +121,8 @@ def winds_at_pass(wind, t, max_gap_min=MAX_GAP_MIN):
     return near
 
 
-def build_wind_at_passes(timeline, wind, stations, max_gap_min=MAX_GAP_MIN):
-    """每次過境、每個測站列出時間上最近的觀測（一到兩筆），附測站離沉船的距離。
+def build_wind_at_passes(timeline, wind, stations, max_gap_min=MAX_GAP_MIN, event=ANGEL):
+    """每次過境、每個測站列出時間上最近的觀測（一到兩筆），附測站離事件位置的距離。
 
     某測站在該過境附近沒有任何觀測時，仍保留一列（觀測欄位為空），讓缺口看得見。
     """
@@ -136,7 +136,7 @@ def build_wind_at_passes(timeline, wind, stations, max_gap_min=MAX_GAP_MIN):
                 "covers_wreck": bool(p["covers_wreck"]),
                 "station": s["code"],
                 "station_name": s["name"],
-                "dist_km": round(float(haversine_km(s["lat"], s["lon"], WRECK_LAT, WRECK_LON)), 1),
+                "dist_km": round(float(haversine_km(s["lat"], s["lon"], event.lat, event.lon)), 1),
             }
             near = winds_at_pass(wind[wind["station"] == s["code"]], t, max_gap_min)
             if near.empty:
@@ -155,7 +155,9 @@ def main():
     ap.add_argument("--max-gap-min", type=float, default=MAX_GAP_MIN)
     ap.add_argument("--out-hourly", help="輸出逐時風速表 CSV 路徑")
     ap.add_argument("--out", help="輸出各次過境的風 CSV 路徑")
+    add_event_args(ap)
     args = ap.parse_args()
+    event = event_from_args(ap, args)
 
     wind = load_wind(args.raw)
     stations = pd.read_csv(args.stations, encoding="utf-8-sig")
@@ -168,7 +170,7 @@ def main():
     if absent:
         print(f"注意：測站清單裡的 {absent} 在資料夾裡沒有資料")
 
-    result = build_wind_at_passes(timeline, wind, stations, args.max_gap_min)
+    result = build_wind_at_passes(timeline, wind, stations, args.max_gap_min, event)
     print(f"\n{len(timeline)} 次過境 × {len(stations)} 站 → {len(result)} 列（時間差上限 {args.max_gap_min:g} 分鐘）")
     print(result.drop(columns=["time_tw"]).to_string(index=False))
 

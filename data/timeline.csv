@@ -1,4 +1,4 @@
-﻿sensor,time_tw,time_utc,hours_since_sinking,orbit_state,mode,covers_wreck,cloud_cover_min,drone_date,drone_gap_hours,drone_n_near
+﻿sensor,time_tw,time_utc,hours_since_event,orbit_state,mode,covers_wreck,cloud_cover_min,drone_date,drone_gap_hours,drone_n_near
 S2,2023-07-19 10:25:39.024000+08:00,2023-07-19 02:25:39.024000+00:00,-43.1,descending,,True,92.22,,,
 S1,2023-07-19 18:01:04.729746+08:00,2023-07-19 10:01:04.729746+00:00,-35.5,ascending,IW,False,,,,
 S1,2023-07-22 05:53:01.405194+08:00,2023-07-21 21:53:01.405194+00:00,24.4,descending,IW,True,,2023-07-22,9.2,63.0
