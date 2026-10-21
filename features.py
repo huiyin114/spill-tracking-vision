@@ -12,12 +12,14 @@
 
 用法：
   python features.py --timeline data/timeline.csv --wind data/wind_at_passes.csv \
-      --out-passes data/passes.csv --out data/features_long.csv
+      --ocean data/ocean_at_passes.csv --out-passes data/passes.csv --out data/features_long.csv
 """
 import argparse
 
 import numpy as np
 import pandas as pd
+
+from ocean import SOURCE_CURRENT, SOURCE_WIND
 
 # 變數登記表：變數名 → (單位, 說明)。新增變數時先在這裡登記，輸出表的 unit 欄由它而來。
 VARIABLES = {
@@ -27,6 +29,18 @@ VARIABLES = {
     "drone_n_near": ("photos", "該無人機日拍在事件位置附近（1 km 內）的照片張數"),
     "wind_speed": ("m/s", "測站逐時風速（整點前 10 分鐘平均）"),
     "wind_direction": ("deg", "測站逐時風向（360 為北風；風速 ≦ 0.2 m/s 時為空）"),
+    "current_speed": ("m/s", "模型表層海流速度（沉船最近的有效格點，取最近的整點）"),
+    "current_direction_to": ("deg", "模型表層海流流向，水往哪邊去（0 為北、順時針；速度為 0 時為空）"),
+    "model_wind_speed": ("m/s", "模型風速（stress-equivalent wind，沉船最近格點，取最近的整點）"),
+    "model_wind_direction_from": ("deg", "模型風向，風從哪邊來（0 為北、順時針；速度為 0 時為空；與測站 wind_direction 的北風 360 不同）"),
+}
+
+# 模型欄位 → (變數名, 來源)。欄位來自 ocean.ocean_at_passes。
+OCEAN_VARIABLES = {
+    "current_speed": ("current_speed", SOURCE_CURRENT),
+    "current_direction_to": ("current_direction_to", SOURCE_CURRENT),
+    "model_wind_speed": ("model_wind_speed", SOURCE_WIND),
+    "model_wind_direction_from": ("model_wind_direction_from", SOURCE_WIND),
 }
 
 PASS_COLUMNS = ["pass_id", "sensor", "time_tw", "time_utc", "orbit_state", "mode", "covers_wreck", "drone_date"]
@@ -55,8 +69,11 @@ def build_passes(timeline):
     return out.loc[order].reset_index(drop=True)
 
 
-def build_features_long(timeline, wind_at_passes):
-    """時間軸與風合成長表。風表裡的過境必須都在時間軸裡，否則報錯（兩份輸入不一致）。"""
+def build_features_long(timeline, wind_at_passes, ocean_at_passes=None):
+    """時間軸、測站風、（選填）模型海流與風合成長表。
+
+    風表與模型表裡的過境必須都在時間軸裡，否則報錯（輸入不一致）。
+    """
     known = set(build_passes(timeline)["pass_id"])
     rows = []
 
@@ -81,6 +98,14 @@ def build_features_long(timeline, wind_at_passes):
             raise ValueError(f"風表裡的過境 {pid} 不在時間軸裡，兩份輸入對不上")
         add(pid, "wind_speed", w["station"], w["ws_ms"], w["gap_min"])
         add(pid, "wind_direction", w["station"], w["wd_deg"], w["gap_min"])
+
+    if ocean_at_passes is not None:
+        for _, o in ocean_at_passes.iterrows():
+            pid = make_pass_id(o["sensor"], pd.to_datetime(o["time_tw"], utc=True))
+            if pid not in known:
+                raise ValueError(f"模型表裡的過境 {pid} 不在時間軸裡，兩份輸入對不上")
+            for column, (variable, source) in OCEAN_VARIABLES.items():
+                add(pid, variable, source, o[column], o["gap_min"])
 
     out = pd.DataFrame(rows, columns=[c for c in LONG_COLUMNS if c != "unit"])
     out.insert(4, "unit", out["variable"].map({k: v[0] for k, v in VARIABLES.items()}))
@@ -113,6 +138,7 @@ def main():
     ap = argparse.ArgumentParser(description="時間軸與風的長格式特徵表")
     ap.add_argument("--timeline", required=True, help="時間軸 CSV（data/timeline.csv）")
     ap.add_argument("--wind", required=True, help="各次過境的風 CSV（data/wind_at_passes.csv）")
+    ap.add_argument("--ocean", help="各次過境的模型海流與風 CSV（data/ocean_at_passes.csv，選填）")
     ap.add_argument("--out-passes", help="輸出過境表 CSV 路徑")
     ap.add_argument("--out", help="輸出長格式特徵表 CSV 路徑")
     ap.add_argument("--out-wide", help="另外輸出每次過境一列的寬表 CSV 路徑（取時間最近的一筆）")
@@ -121,7 +147,8 @@ def main():
     timeline = pd.read_csv(args.timeline, encoding="utf-8-sig")
     wind = pd.read_csv(args.wind, encoding="utf-8-sig")
     passes = build_passes(timeline)
-    features = build_features_long(timeline, wind)
+    ocean = pd.read_csv(args.ocean, encoding="utf-8-sig") if args.ocean else None
+    features = build_features_long(timeline, wind, ocean)
 
     print(f"{len(passes)} 次過境 → {len(features)} 列特徵")
     print(features.groupby(["variable", "source"]).size().to_string())

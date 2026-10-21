@@ -192,3 +192,65 @@ def test_new_variable_needs_no_schema_change():
     f = features.build_features_long(make_timeline(), pd.concat([w, extra], ignore_index=True))
     assert list(f.columns) == features.LONG_COLUMNS
     assert get(f, S1, "wind_speed", "C0V890")["value"].iloc[0] == 4.0
+
+
+# ---- 模型海流與風 ----
+
+def make_ocean_rows():
+    """S2 一列（有值）、S1 一列（速度 0，方向為空）。"""
+    return pd.DataFrame([
+        {"sensor": "S2", "time_tw": "2023-07-24 10:25:39+08:00", "obs_time_utc": "2023-07-24 02:00:00+00:00",
+         "gap_min": -25.65, "current_speed": 0.5, "current_direction_to": 270.0,
+         "model_wind_speed": 6.0, "model_wind_direction_from": 135.0},
+        {"sensor": "S1", "time_tw": "2023-07-22 06:00:00+08:00", "obs_time_utc": "2023-07-21 22:00:00+00:00",
+         "gap_min": 0.0, "current_speed": 0.0, "current_direction_to": np.nan,
+         "model_wind_speed": 2.0, "model_wind_direction_from": 0.0},
+    ])
+
+
+def test_ocean_rows_become_four_variables_with_sources_units_and_gap():
+    f = features.build_features_long(make_timeline(), make_wind(), make_ocean_rows())
+    for variable, source, value, unit in [
+            ("current_speed", "cmems_phy_001_024", 0.5, "m/s"),
+            ("current_direction_to", "cmems_phy_001_024", 270.0, "deg"),
+            ("model_wind_speed", "cmems_wind_012_006", 6.0, "m/s"),
+            ("model_wind_direction_from", "cmems_wind_012_006", 135.0, "deg")]:
+        r = get(f, S2, variable)
+        assert len(r) == 1
+        assert r["source"].iloc[0] == source and r["value"].iloc[0] == value
+        assert r["unit"].iloc[0] == unit and r["gap_min"].iloc[0] == -25.65
+
+
+def test_ocean_nan_direction_keeps_row_and_speed_zero_is_not_dropped():
+    f = features.build_features_long(make_timeline(), make_wind(), make_ocean_rows())
+    d = get(f, S1, "current_direction_to")
+    assert len(d) == 1 and np.isnan(d["value"].iloc[0])
+    assert get(f, S1, "current_speed")["value"].iloc[0] == 0.0
+
+
+def test_ocean_is_optional_and_does_not_change_existing_rows():
+    base = features.build_features_long(make_timeline(), make_wind())
+    with_ocean = features.build_features_long(make_timeline(), make_wind(), make_ocean_rows())
+    assert not base["variable"].isin(features.OCEAN_VARIABLES).any()
+    kept = with_ocean[~with_ocean["variable"].isin(features.OCEAN_VARIABLES)].reset_index(drop=True)
+    pd.testing.assert_frame_equal(kept, base)
+
+
+def test_ocean_rows_with_unknown_pass_raise():
+    o = make_ocean_rows()
+    o.loc[0, "time_tw"] = "2023-07-30 10:25:39+08:00"
+    with pytest.raises(ValueError, match="模型表"):
+        features.build_features_long(make_timeline(), make_wind(), o)
+
+
+def test_model_wind_does_not_mix_with_station_wind_in_wide_table():
+    f = features.build_features_long(make_timeline(), make_wind(), make_ocean_rows())
+    w = features.to_wide(f).set_index("pass_id")
+    assert w.loc[S2, "wind_speed@C0V690"] == 5.0                  # 測站風仍取最近的整點（+24.35 分比 −25.65 分近）
+    assert w.loc[S2, "model_wind_speed@cmems_wind_012_006"] == 6.0
+    assert w.loc[S2, "current_direction_to@cmems_phy_001_024"] == 270.0
+
+
+def test_ocean_variables_are_registered():
+    for variable, _ in features.OCEAN_VARIABLES.values():
+        assert variable in features.VARIABLES

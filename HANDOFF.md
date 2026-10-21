@@ -14,7 +14,10 @@
 使用者決定把目標加回兩項：(1) 以沉船為污染源做漂移模擬並與觀測比對；(2) 物理條件增加替代來源。已做的調查與決定：
 - 模擬方法：使用者選 **OpenDrift**（不是自己寫粒子追蹤）。OpenDrift 的風漂移設定來自 GMD 2017 討論稿（預印本，不是最終版）：表層油額外受 2% 風（可設定）、Stokes drift 約 1.5% 風，合計 3.5%（Schwartzberg 1971 的經驗值）；預設值可能已變，使用前要對照現行文件。安裝：文件建議 conda／mamba，另有 Docker；**文件沒有任何作業系統說明，使用者的 Windows 能否裝起來尚未確認**。OpenDrift 應放在獨立環境，核心測試不得依賴它。
 - 海流候選：Copernicus Marine 全球分析預報，逐時表層海流 `cmems_mod_glo_phy_anfc_0.083deg_PT1H-m`（uo、vo）與 SMOC `cmems_mod_glo_phy_anfc_merged-uv_PT1H-i`（環流＋潮流＋Stokes drift 與其總和，變數名稱手冊內不一致）。**2023 年 7 月是否可下載未確認**：產品頁寫 2020-11-01 起，產品手冊寫滾動兩年存檔、2016 起需申請。需免費註冊，用 `copernicusmarine` 工具的 `subset` 下載（雲端環境連不到，由使用者下載後放 `data/raw/`）。
-- 風候選：ERA5（需 CDS 帳號與個人存取權杖）、或 CODiS 測站（陸地，品質差）。尚未決定。
+- **已確認（2026-10-21）**：使用者用 Marine Data Store 網頁的 Subset 表單，下載了 `cmems_mod_glo_phy_anfc_0.083deg_PT1H-m`（資料集版本標示 `_202406`，MOI GLO12）的 `uo`、`vo`，範圍經度 119.83–121.17、緯度 22.0–23.17，時間 2023-07-20 00:00 至 07-29 00:00（217 筆逐時，單一深度 0.494 m；已涵蓋沉沒時間 07-20 21:30 UTC，取代原本 07-21 起的 193 筆版本），存在 `data/raw/cmems/`（不進版控）。時間以「seconds since 1970-01-01」編碼，視為 UTC（依 CF 慣例的推論，文件這次沒逐字查到）。1/12° 格點，約 43% 為陸地遮罩；離沉船最近的有效格點在 22.583°N 120.167°E（5.0 km）。事件附近海流平均約 0.3 m/s，向西到西北為主，7/27 後轉向西北、最大約 0.8 m/s。
+- **OpenDrift 已安裝（2026-10-21）**：使用者在 Windows 用 Miniforge 建立獨立環境 `opendrift`（`mamba create -n opendrift python=3 opendrift`），`import opendrift` 與 `from opendrift.models.openoil import OpenOil` 都成功（安裝路徑 `C:\Users\User\miniforge3\envs\opendrift`）。漂移程式在此環境執行，專案原本的 `.venv` 與測試分開。
+- **風已決定並下載（2026-10-21）**：用 Copernicus Marine `WIND_GLO_PHY_L4_MY_012_006`（KNMI，逐時、0.125°、以衛星散射計校正 ERA5）的資料集 `cmems_obs-wind_glo_phy_my_l4_0.125deg_PT1H`（檔案標示 `_202211`），只勾 `eastward_wind`、`northward_wind`，範圍與時間同海流（119.56–121.44°E、21.81–23.44°N，2023-07-20 00:00 至 07-29 00:00 UTC，217 筆）。變數說明為「stress-equivalent wind … at 10 m」，不是一般 10 m 風，報告要註明。沉船附近格點沒有缺值；沉船最近格點的風速平均約 4.7 m/s、最大約 20.3 m/s（可能是颱風期間，推論，未對照颱風資料）。備選 ERA5（CDS）與 CODiS 測站未使用（CODiS 只用於頁面對照）。
+- 油的實際外洩起始時間未知；模擬若從沉沒時間 2023-07-20 21:30 UTC 釋放，這是假設。
 - 潮汐：SMOC 已含潮流，不需另取；pyTMD 模型（GOT、FES 需 AVISO 註冊、TPXO 需申請）是備選。氣象署「即時海況」只有近 48 小時與 30 天，沒有歷史存檔。
 - 比對限制（報告必須如實寫）：能比對的只有文獻的方向（東南）與 7/27 最遠距離 26.5 km；粒子模擬無法驗證面積；外洩量不明（船上油量 491.848 t 不是外洩量）；只能寫「與文獻是否一致」，不能寫「驗證」。
 - 時程：使用者自行調整檢查點日期。若海流資料取不到，漂移模擬與海流退回「評估過、未做」，並把查到的來源寫進報告。
@@ -46,12 +49,13 @@
 | 無人機清單與每日摘要 | `drone.py`、`test_drone.py`、`extract_drone_exif.py` |
 | 時間軸：衛星過境對無人機出勤（無人機選填） | `timeline.py`、`test_timeline.py`、`data/timeline.csv` |
 | 風：CODiS 三站逐時風與各次過境的風 | `wind.py`、`test_wind.py`、`data/stations.csv`、`data/wind_hourly.csv`、`data/wind_at_passes.csv` |
+| 模型海流與模型風：沉船最近有效格點的逐時 u/v（`extract_ocean.py`，在 opendrift 環境執行）、速度方向換算與對齊過境（`ocean.py`）、進特徵表四個變數 | `extract_ocean.py`、`ocean.py`、`test_extract_ocean.py`、`test_ocean.py`、`data/ocean_at_wreck.csv`、`data/ocean_at_passes.csv` |
 | 長格式特徵表 | `features.py`、`test_features.py`、`data/passes.csv`、`data/features_long.csv`、`data/features_wide.csv` |
 | 外部參考觀測（JpGU 三個數字）與過境對應 | `reference.py`、`test_reference.py`、`data/reference_observations.csv`、`data/reference_matched.csv` |
 | 統一介面頁 | `page_data.py`、`build_page.py`、`site/template.html`、`site/index.html`、`test_page_data.py`、`test_build_page.py` |
 | README（快速開始、專案結構、目標與實際完成範圍、擴充指南）、`requirements.txt` | `README.md`、`requirements.txt` |
 
-共 202 個測試。原始資料（STAC JSON、CODiS CSV）放在 `data/raw/`，不進版控。README 的重現指令已在乾淨副本實際執行，輸出與已提交的檔案逐位元相同。
+共 241 個測試（本機 .venv 沒有 xarray 時 2 個讀 NetCDF 的測試會跳過，在 opendrift 環境全部執行）。原始資料（STAC JSON、CODiS CSV）放在 `data/raw/`，不進版控。README 的重現指令已在乾淨副本實際執行，輸出與已提交的檔案逐位元相同。
 
 ## 已定的規則
 
@@ -65,14 +69,14 @@
 
 ## 待辦
 
-1. 先確認使用者的檢查點結果（Copernicus Marine 2023-07 逐時海流可否下載；OpenDrift 可否在獨立環境安裝），再決定是否進入新階段（海流變數、風的替代來源、漂移模擬、頁面整合）。
+1. 階段 11（海流與模型風進特徵表）已完成。下一步：階段 13 OpenDrift 漂移模擬（在 `opendrift` 環境；沉船位置釋放、釋放時間假設為沉沒時間；風漂移係數先對照現行 OpenDrift 文件；只比對方向與 7/27 最遠距離 26.5 km；方向不一致也要如實報告，不調參數去對）；之後階段 14 頁面顯示粒子位置。
 2. 報告（階段 10 的 B）：預計做成可匯出 Word／PDF 的文件（Docs）。要如實寫入：範圍縮減與原因、資料限制、AI 協作中 AI 出的錯（見 `AI_LOG.md`）。
 3. 繳交前使用者自己確認：GitHub 倉庫能被助教開啟（用無痕視窗測）、git log 清楚、在自己的 Windows 環境 `pip install -r requirements.txt` 後 `python -m pytest` 全過。
 
 ## 刻意沒做的事（報告要如實寫）
 
-- 海流與潮汐：台灣來源（CODiS 格點、氣象資料開放平臺海象資料）取不到 2023 年；候選為 Copernicus Marine、eo-tides，尚未選定。
-- 雷達暗區偽陽性過濾。（ERA5 風、海流、漂移模擬目前在上面的「範圍變更」裡評估中，尚未做。）
+- 潮汐沒有另外處理：台灣來源（CODiS 格點、氣象資料開放平臺海象資料）取不到 2023 年；所用 `PT1H-m` 海流資料集是否含潮流未確認。
+- 雷達暗區偽陽性過濾。（漂移模擬在上面的「範圍變更」，進行中。）
 - MCP server、GeoJSON／CSV 匯出。
 - 頁面的 JavaScript 沒有自動化測試，只用瀏覽器實際操作檢查。
 

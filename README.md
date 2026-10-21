@@ -18,7 +18,10 @@ pytest                      # 全部測試，都自己造資料，不讀 data/
 ```
 python timeline.py --s1 data/raw/stac_s1.json --s2 data/raw/stac_s2.json --drone data/drone/angel_drone_exif.csv --out data/timeline.csv
 python wind.py --raw data/raw/codis --stations data/stations.csv --timeline data/timeline.csv --out-hourly data/wind_hourly.csv --out data/wind_at_passes.csv
-python features.py --timeline data/timeline.csv --wind data/wind_at_passes.csv --out-passes data/passes.csv --out data/features_long.csv --out-wide data/features_wide.csv
+# 模型海流與風：extract_ocean.py 要在 opendrift 環境執行（需要 xarray、netCDF4），輸入的 NetCDF 不在倉庫
+python extract_ocean.py --current-nc data/raw/cmems/<海流檔>.nc --wind-nc data/raw/cmems/<風檔>.nc --out data/ocean_at_wreck.csv
+python ocean.py --timeline data/timeline.csv --ocean data/ocean_at_wreck.csv --out data/ocean_at_passes.csv
+python features.py --timeline data/timeline.csv --wind data/wind_at_passes.csv --ocean data/ocean_at_passes.csv --out-passes data/passes.csv --out data/features_long.csv --out-wide data/features_wide.csv
 python reference.py --reference data/reference_observations.csv --passes data/passes.csv --out data/reference_matched.csv
 python build_page.py --data data --template site/template.html --out site/index.html
 ```
@@ -32,6 +35,7 @@ python build_page.py --data data --template site/template.html --out site/index.
 | `extract_drone_exif.py`、`drone.py` | 讀無人機照片 EXIF 清單、每日摘要（照片原檔不在倉庫，EXIF 清單在 `data/drone/`） |
 | `timeline.py` | 衛星過境、無人機出勤、事件時間放到同一條時間軸 |
 | `wind.py` | 氣象署測站逐時風，與各次過境對齊 |
+| `extract_ocean.py`、`ocean.py` | 模型海流與模型風：抽沉船最近格點的逐時序列、換算速度與方向、對齊到各次過境 |
 | `features.py` | 整成長格式特徵表 |
 | `reference.py` | 外部文獻估計值與過境的對應 |
 | `page_data.py`、`build_page.py`、`site/` | 產生統一介面頁 |
@@ -63,8 +67,8 @@ python build_page.py --data data --template site/template.html --out site/index.
 原本的目標有三項，實際完成的範圍如下（2026-10-12 評估時間與資料後，決定縮小範圍，把已有的部分做完整、可驗證，並讓事件與變數可以替換）：
 
 1. 事件期間所有可用的衛星過境與無人機出勤，放到同一條時間軸：**完成**。
-2. 為每個觀測補上同時間的物理條件：**只完成風**（氣象署測站）。海流與潮汐**未做**：氣象署公開的海象資料只有最近 48 小時與 30 天，取不到 2023 年；可能的替代來源（ERA5、Copernicus Marine）沒有接。
-3. 以沉船為污染源做漂移模擬並與觀測比對：**未做**。
+2. 為每個觀測補上同時間的物理條件：**已完成風（氣象署測站）、模型海流與模型風（Copernicus Marine，沉船最近格點）**。氣象署公開的海象資料只有最近 48 小時與 30 天，取不到 2023 年，所以海流改用 Copernicus Marine。模型資料只下載 2023-07-20 至 07-29，所以 18 次過境中只有 3 次（7/22 S1、7/24 S2、7/27 S1）有模型值。潮汐沒有另外處理，所用的海流資料集是否含潮流尚未確認。
+3. 以沉船為污染源做漂移模擬並與觀測比對：**進行中**（以 OpenDrift 模擬，尚未完成）。
 4. 另外評估過、**未做**：雷達暗區偽陽性過濾。
 
 因為沒有油膜面積的自動偵測，專案裡沒有任何「驗證」文獻數字的結果；文獻估計值只是並列顯示。
@@ -94,18 +98,34 @@ python build_page.py --data data --template site/template.html --out site/index.
 - 處理：`wind.py` 讀月報表，輸出逐時表 `data/wind_hourly.csv`，並對每次衛星過境、每個測站列出時間最近的一到兩筆觀測 `data/wind_at_passes.csv`（時間差上限 30 分鐘）。Sentinel-2 的過境皆約在台灣時間 10:25，介於 10 時與 11 時兩筆觀測之間，所以兩筆都列出。
 
 
+### 模型海流與模型風（Copernicus Marine）
+
+- 下載日期 2026-10-21，用 Marine Data Store 網頁的 Subset 表單下載（需免費帳號），NetCDF 放在 `data/raw/cmems/`（不納入版控）。
+- 海流：產品 GLOBAL_ANALYSISFORECAST_PHY_001_024 的資料集 `cmems_mod_glo_phy_anfc_0.083deg_PT1H-m`（檔案屬性標示版本 `_202406`），變數 `uo`、`vo`，表層（深度 0.494 m），1/12°。範圍經度 119.83–121.17、緯度 22.0–23.17，時間 2023-07-20 00:00 至 07-29 00:00 UTC，逐時 217 筆。
+- 風：產品 WIND_GLO_PHY_L4_MY_012_006（KNMI）的資料集 `cmems_obs-wind_glo_phy_my_l4_0.125deg_PT1H`（檔案屬性標示版本 `_202211`），變數 `eastward_wind`、`northward_wind`，0.125°，同樣的時間範圍。檔案的變數說明是「stress-equivalent wind … at 10 m」，不是一般的 10 m 風。文獻：Trindade et al. (2020)，doi:10.1109/TGRS.2019.2946019（檔案屬性）。
+- 時間：檔案以「seconds since 1970-01-01」編碼，視為 UTC（推論，檔案沒有寫時區）。
+- 沉船附近：海流有陸地遮罩，離沉船最近的有效格點是 22.5833°N、120.1667°E（5.01 km）；風最近的格點 22.5625°N、120.1875°E（5.54 km），沒有缺值。程式取「最近的有效格點」，不內插；這是假設，不是沉船位置的值。
+
 ## 程式與輸出說明
+
+### 模型海流與風（`extract_ocean.py`、`ocean.py`）
+
+- `extract_ocean.py`：從兩個 NetCDF 取沉船最近有效格點的逐時 u、v，存成 `data/ocean_at_wreck.csv`（217 列）。這是唯一用到 xarray 的程式，在 `opendrift` 環境執行；專案其餘部分只用 pandas。有效格點 = 整段時間 u、v 都沒有缺值的格點。
+- `ocean.py`：把 u、v 換算成速度與方向，並對每次過境取時間最近的整點（差距上限 30 分鐘，一樣近取較早的，不內插），輸出 `data/ocean_at_passes.csv`。
+- 方向定義（兩者相反，變數名稱已寫明）：`current_direction_to` 是水往哪邊流，`model_wind_direction_from` 是風從哪邊來；都是 0 為北、順時針、範圍 [0, 360)。速度為 0 時方向為空。注意北風在這裡是 0，CODiS 的 `wind_direction` 北風是 360。
+- 進長格式特徵表的變數：`current_speed`、`current_direction_to`（來源 `cmems_phy_001_024`）、`model_wind_speed`、`model_wind_direction_from`（來源 `cmems_wind_012_006`），`gap_min` = 模型時間 − 過境時間。模型風與測站風用不同的變數名稱，不會在寬表裡混在一起。
+- 這些值只是過境當下的環境條件，不用來「驗證」文獻。介面頁目前不顯示這些變數。
 
 ### 特徵表（`features.py`）
 
-把時間軸與風整成兩張表，之後加新變數（海流、潮汐…）只要多一個讀取程式和多幾列，不必改欄位。
+把時間軸、風與模型海流整成兩張表，之後加新變數只要多一個讀取程式和多幾列，不必改欄位。
 
 - `data/passes.csv`：每次過境一列，只放不變的屬性（感測器、時間、軌道、是否涵蓋、配對的無人機日）。過境識別碼 `pass_id` = 感測器 + UTC 時間（到秒）。
 - `data/features_long.csv`：每次過境、每個變數、每個來源一列（`pass_id, variable, source, value, unit, gap_min`）。這次過境不適用的變數沒有列；有查但沒值就留一列、值為空，不用 0 代替。
 - `data/features_wide.csv`：每次過境一列的寬表，欄名為「變數@來源」。同一過境有兩筆觀測時（Sentinel-2 都夾在兩個整點之間）取時間差絕對值較小的一筆，一樣近取較早的；這只是暫時的取法，不代表最適合，長表保留兩筆。
 - 變數與單位登記在 `features.VARIABLES`。
 
-指令：`python features.py --timeline data/timeline.csv --wind data/wind_at_passes.csv --out-passes data/passes.csv --out data/features_long.csv --out-wide data/features_wide.csv`
+指令（`--ocean` 選填，不給就沒有模型海流與風）：`python features.py --timeline data/timeline.csv --wind data/wind_at_passes.csv --ocean data/ocean_at_passes.csv --out-passes data/passes.csv --out data/features_long.csv --out-wide data/features_wide.csv`
 
 ### 換成其他事件（`event.py`）
 
@@ -172,9 +192,10 @@ python build_page.py --data data --template site/template.html --out site/index.
 - [x] 統一介面頁（`site/index.html`）：時間軸、過境、風與參考觀測
 - [x] 外部參考觀測表（`reference.py`）：JpGU 摘要的三個數字與對應過境
 - [x] 事件參數可替換（`event.py`）：位置、期間、發生時間可換；無人機選填；`hours_since_sinking` 改名 `hours_since_event`
-- [ ] 海流與潮汐（未做，原因見「目標與實際完成範圍」）
+- [x] 模型海流與模型風（`extract_ocean.py`、`ocean.py`）：沉船最近格點，對齊到各次過境
+- [ ] 潮汐（沒有另外處理）
 - [ ] 雷達暗區偽陽性過濾（未做）
-- [ ] 漂移模擬與比對（未做）
+- [ ] 漂移模擬與比對（進行中）
 
 ## 參考資料
 
@@ -187,6 +208,8 @@ python build_page.py --data data --template site/template.html --out site/index.
 - Copernicus Data Space Ecosystem. CDSE STAC API 根頁面. https://stac.dataspace.copernicus.eu/v1/ （`conformsTo` 宣告支援 Item Search；查詢日期 2026-10-10）
 - Copernicus Data Space Ecosystem. CDSE STAC API 的 OpenAPI 描述. https://stac.dataspace.copernicus.eu/v1/api （`/search` 的 collections、bbox、datetime、limit 參數說明；互動版為 https://stac.dataspace.copernicus.eu/v1/api.html ）
 - STAC API – Item Search 規範. https://github.com/radiantearth/stac-api-spec/blob/main/item-search/README.md （上述參數的標準定義，以及 bbox 順序、datetime 區間與 next 連結的規則）
+- Copernicus Marine Service. Global Ocean Hourly Reprocessed Sea Surface Wind and Stress from Scatterometer and Model（WIND_GLO_PHY_L4_MY_012_006），DOI 10.48670/moi-00185. https://data.marine.copernicus.eu/product/WIND_GLO_PHY_L4_MY_012_006/ （產品名稱與代碼；資料集名稱、變數與 stress-equivalent 說明取自下載檔的屬性）
+- Copernicus Marine Service. Global Ocean Physics Analysis and Forecast（GLOBAL_ANALYSISFORECAST_PHY_001_024）. https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/ （逐時表層海流資料集；2023 年 7 月資料實際下載確認存在）
 - 中央氣象署. 氣候觀測資料查詢服務（CODiS）. https://codis.cwa.gov.tw/ （測站清單、逐時風速與風向月報表；查詢日期 2026-10-11）
 - 中央氣象署. 氣候觀測資料查詢服務—觀測資料說明（Ver.2025.12.31）. 於 CODiS 測站資料頁的「資料說明」下載 （站碼意義、逐時風的定義、符號說明）
 - 中央氣象署. 氣象資料開放平臺. https://opendata.cwa.gov.tw/ （海象監測資料 O-B0075-001／002 僅提供最近 48 小時與 30 天；查詢日期 2026-10-11）
