@@ -2,6 +2,42 @@
 
 天使輪（Angel）2023 高雄外海沉船油汙事件的多源遙測整合。（課程作業 HW2）
 
+把 Sentinel-1/2 衛星過境、無人機空拍與氣象署測站風，整合到同一條時間軸與一個介面頁。AI（Claude）協助撰寫，協作過程記錄在 [AI_LOG.md](AI_LOG.md)。
+
+## 快速開始
+
+```
+pip install -r requirements.txt
+pytest                      # 全部測試，都自己造資料，不讀 data/
+```
+
+直接看成果：用瀏覽器打開 `site/index.html`（資料已嵌在檔案裡，不需要網路）。
+
+從資料重新產生全部輸出（原始資料不在倉庫，來源與下載方式見下方「資料來源與查詢方式」）：
+
+```
+python timeline.py --s1 data/raw/stac_s1.json --s2 data/raw/stac_s2.json --drone data/drone/angel_drone_exif.csv --out data/timeline.csv
+python wind.py --raw data/raw/codis --stations data/stations.csv --timeline data/timeline.csv --out-hourly data/wind_hourly.csv --out data/wind_at_passes.csv
+python features.py --timeline data/timeline.csv --wind data/wind_at_passes.csv --out-passes data/passes.csv --out data/features_long.csv --out-wide data/features_wide.csv
+python reference.py --reference data/reference_observations.csv --passes data/passes.csv --out data/reference_matched.csv
+python build_page.py --data data --template site/template.html --out site/index.html
+```
+
+## 專案結構
+
+| 檔案 | 作用 |
+|---|---|
+| `event.py` | 事件參數（位置、期間、發生時間），預設天使輪 |
+| `catalog.py` | 讀 STAC 搜尋結果，合併成每次衛星過境一列 |
+| `extract_drone_exif.py`、`drone.py` | 讀無人機照片 EXIF 清單、每日摘要（照片原檔不在倉庫，EXIF 清單在 `data/drone/`） |
+| `timeline.py` | 衛星過境、無人機出勤、事件時間放到同一條時間軸 |
+| `wind.py` | 氣象署測站逐時風，與各次過境對齊 |
+| `features.py` | 整成長格式特徵表 |
+| `reference.py` | 外部文獻估計值與過境的對應 |
+| `page_data.py`、`build_page.py`、`site/` | 產生統一介面頁 |
+| `test_*.py` | 單元測試，與上面的模組一一對應 |
+| `AI_LOG.md` | AI 協作紀錄；`HANDOFF.md` 是給新對話接手用的交接說明 |
+
 ## 為什麼做這個
 
 海上油汙常用衛星影像監測，但兩種影像各有限制：雷達影像上的暗區不一定是油，會受海面粗糙度（風浪）影響；光學影像則常被雲遮住。要判斷「這塊暗區是不是油、之後會漂到哪」，需要把影像和風、海流等物理條件放在一起看。目前這些資料分散在不同網站與格式，每次分析都要手動整合。
@@ -22,11 +58,16 @@
 
 中央大學太空及遙測研究中心（Chu et al., 2025）曾用 Sentinel-1/2、Landsat-8/9 與無人機監測此事件，整理見 [jpgu2025.md](jpgu2025.md)。
 
-## 本專案想做的（暫定，會隨進度修正）
+## 目標與實際完成範圍
 
-1. 整理事件期間所有可用的衛星過境與無人機出勤，放到同一條時間軸。
-2. 為每個觀測補上同時間的物理條件（風、海流等）。
-3. 以已知污染源（沉船）做漂移模擬，並與觀測比對。
+原本的目標有三項，實際完成的範圍如下（2026-10-12 評估時間與資料後，決定縮小範圍，把已有的部分做完整、可驗證，並讓事件與變數可以替換）：
+
+1. 事件期間所有可用的衛星過境與無人機出勤，放到同一條時間軸：**完成**。
+2. 為每個觀測補上同時間的物理條件：**只完成風**（氣象署測站）。海流與潮汐**未做**：氣象署公開的海象資料只有最近 48 小時與 30 天，取不到 2023 年；可能的替代來源（ERA5、Copernicus Marine）沒有接。
+3. 以沉船為污染源做漂移模擬並與觀測比對：**未做**。
+4. 另外評估過、**未做**：雷達暗區偽陽性過濾。
+
+因為沒有油膜面積的自動偵測，專案裡沒有任何「驗證」文獻數字的結果；文獻估計值只是並列顯示。
 
 ## 資料來源與查詢方式
 
@@ -52,6 +93,8 @@
 - 查證後不採用的來源：CODiS 氣候格點資料（2.5 km）只有氣溫、降水量、氣壓、相對溼度、露點溫度，沒有風；氣象資料開放平臺的海象監測資料（O-B0075-001／002）只提供最近 48 小時與 30 天，取不到 2023 年。
 - 處理：`wind.py` 讀月報表，輸出逐時表 `data/wind_hourly.csv`，並對每次衛星過境、每個測站列出時間最近的一到兩筆觀測 `data/wind_at_passes.csv`（時間差上限 30 分鐘）。Sentinel-2 的過境皆約在台灣時間 10:25，介於 10 時與 11 時兩筆觀測之間，所以兩筆都列出。
 
+
+## 程式與輸出說明
 
 ### 特徵表（`features.py`）
 
@@ -103,6 +146,20 @@
 
 限制：頁面本身的畫圖程式（`template.html` 裡的 JavaScript）沒有自動化測試，只用瀏覽器實際打開、點選與游標移動檢查過；有測試的是資料整理與嵌入的部分。沒有地圖，因為沒有可顯示的油膜範圍資料。
 
+### 怎麼擴充
+
+**換成別的事件**：用 `Event` 或命令列的 `--lat --lon --start --end`（見上方「換成其他事件」）。衛星目錄要先用 STAC 另外查詢該事件的範圍與期間；風資料目前只有台灣測站。
+
+**加新的變數**（例如海流）：
+1. 寫一個讀取程式，把來源資料整理成與衛星過境對齊的表（參考 `wind.py` 的 `winds_at_pass`：每次過境、每個來源一到幾列，附與過境的時間差）。
+2. 在 `features.VARIABLES` 登記變數名稱與單位，並在 `features.build_features_long` 把新表轉成長格式的列（`pass_id, variable, source, value, unit, gap_min`）。欄位不變，只是多幾列。
+3. 在 `page_data.py` 與 `site/template.html` 決定要不要顯示。頁面目前只畫風，新變數不會自動出現。
+4. 為新的讀取程式寫測試（自己造資料；做突變檢查確認測試真的會失敗）。
+
+**加新的外部參考觀測**：在 `data/reference_observations.csv` 多加列（要寫出處），新的變數先登記在 `reference.VARIABLES`。
+
+**風資料換來源**：例如 ERA5 是格點資料，沒有測站座標；需要新的讀取程式，輸出格式比照 `wind_hourly.csv`（`station, time_tw, time_utc, ws_ms, wd_deg`，把「測站」換成格點代號）。這只是可行的做法，專案沒有做過。
+
 ## 進度
 
 - [x] 文獻起點：JpGU 2025 摘要
@@ -115,9 +172,9 @@
 - [x] 統一介面頁（`site/index.html`）：時間軸、過境、風與參考觀測
 - [x] 外部參考觀測表（`reference.py`）：JpGU 摘要的三個數字與對應過境
 - [x] 事件參數可替換（`event.py`）：位置、期間、發生時間可換；無人機選填；`hours_since_sinking` 改名 `hours_since_event`
-- [ ] 海流與潮汐
-- [ ] 雷達暗區偽陽性過濾
-- [ ] 漂移模擬與比對
+- [ ] 海流與潮汐（未做，原因見「目標與實際完成範圍」）
+- [ ] 雷達暗區偽陽性過濾（未做）
+- [ ] 漂移模擬與比對（未做）
 
 ## 參考資料
 

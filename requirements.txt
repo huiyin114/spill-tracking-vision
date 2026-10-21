@@ -1,0 +1,9 @@
+# 測試過的環境：Python 3.10（Linux）。換版本時以 pytest 全過為準。
+pandas==2.3.3
+numpy==2.2.6
+shapely==2.1.2
+tzdata==2026.3      # zoneinfo 在 Windows 需要它才找得到 Asia/Taipei
+pytest==9.1.1       # 只有跑測試需要
+
+# 只有 extract_drone_exif.py（讀無人機照片 EXIF，照片不在本倉庫）需要：
+# pillow==12.3.0

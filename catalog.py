@@ -80,12 +80,3 @@ if __name__ == "__main__":
     passes = group_passes(items)
     print(f"{len(items)} 筆影像 → {len(passes)} 次過境")
     print(passes.drop(columns=["time_utc"]).to_string())
-
-'''
-逐段說明
-json.load：把檔案裡的 JSON 文字變成 Python 能操作的資料，就是我們在小段 A 看到的那個結構。
-next 連結檢查：依據我們核對過的 STAC 規範，有 next 就是還有下一頁。我們兩份檔案都沒有，但之後如果換成範圍更大的查詢，這個檢查可以避免你誤把不完整的結果當成全部。
-for item in data["features"]：每個 feature 就是一景影像，迴圈對每一景挑出需要的欄位，存成一列。
-p["platform"] 和 p.get("sar:instrument_mode") 的差別：用方括號，欄位不存在就會報錯；用 .get()，不存在就回傳 None。S1 沒有圖幅和雲量，S2 沒有成像模式，所以這三個欄位要用 .get()，而兩邊都有的欄位用方括號，這樣資料缺了才會馬上被發現。
-pd.Timestamp(...)：把 2023-07-19T02:25:39Z 這樣的文字轉成真正的時間物件。結尾的 Z 代表 UTC，所以之後換算成台灣時間、計算兩景相隔幾小時都能直接做。
-sort_values 和 reset_index：依時間排序，並重新編號。'''
