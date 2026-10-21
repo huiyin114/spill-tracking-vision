@@ -1,0 +1,370 @@
+<title>Spill Tracking Vision</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 版面：標題與提醒 → 時間軸 → 過境表與選取的過境 → 風 → 參考觀測；選一次過境，各區同步標示。 */
+:root {
+  --bg: #f6f7f8; --surface: #fcfcfb; --ink: #14181c; --ink2: #47515a; --muted: #75808a;
+  --line: #dde1e5; --wash: #eef0f2;
+  --s1: #2a78d6; --s2: #eb6834; --wind: #4f5c68; --warn-bg: #fff4d6; --warn-ink: #5c4300;
+  --font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121416; --surface: #1a1a19; --ink: #eceff1; --ink2: #b6bdc4; --muted: #8a939b;
+    --line: #2c3034; --wash: #24272a; --s1: #3987e5; --s2: #d95926; --wind: #a9b4bf;
+    --warn-bg: #3a3014; --warn-ink: #f0d98a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121416; --surface: #1a1a19; --ink: #eceff1; --ink2: #b6bdc4; --muted: #8a939b;
+  --line: #2c3034; --wash: #24272a; --s1: #3987e5; --s2: #d95926; --wind: #a9b4bf;
+  --warn-bg: #3a3014; --warn-ink: #f0d98a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.55; margin: 0;
+  padding-block: 20px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1 { font-size: 22px; line-height: 1.25; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+h2 { font-size: 15px; margin: 0 0 2px; letter-spacing: .02em; }
+.sub { color: var(--ink2); margin: 0; }
+.facts { display: flex; flex-wrap: wrap; gap: 4px 22px; margin: 8px 0 0; padding: 0; list-style: none; color: var(--ink2); }
+.facts b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.note { background: var(--warn-bg); color: var(--warn-ink); padding: 10px 12px; border-radius: 6px; margin: 12px 0 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+.cap { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+.scroll { overflow-x: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--ink2); margin: 6px 0 4px; padding: 0; list-style: none; }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.legend svg { flex: none; }
+svg text { fill: var(--ink2); font-family: var(--font); font-size: 11px; }
+svg .t-ink { fill: var(--ink); }
+svg .t-muted { fill: var(--muted); }
+.grid { stroke: var(--line); stroke-width: 1; }
+.mark { cursor: pointer; }
+.mark:focus-visible { outline: none; }
+.mark:focus-visible .ring, .mark:hover .ring { stroke: var(--ink); stroke-width: 1.5; fill: none; }
+.sel .ring { stroke: var(--ink); stroke-width: 2; fill: none; }
+.two { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 820px) { .two { grid-template-columns: minmax(0, 1fr); } }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td.num, th.num { text-align: right; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--wash); }
+tbody tr.sel { background: var(--wash); box-shadow: inset 3px 0 0 var(--ink); }
+tbody tr:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.sdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.dim { color: var(--muted); }
+dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 8px 0 12px; }
+dt { color: var(--muted); } dd { margin: 0; font-variant-numeric: tabular-nums; }
+.tip { position: fixed; z-index: 20; pointer-events: none; background: var(--ink); color: var(--bg); padding: 6px 9px; border-radius: 6px;
+  font-size: 12px; line-height: 1.45; max-width: 260px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+.tip b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ref { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ref li { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.ref li:last-child { border-bottom: 0; padding-bottom: 0; }
+.ref .val { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.ref small { color: var(--muted); display: block; }
+button.link { all: unset; cursor: pointer; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+button.link:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.empty { color: var(--muted); padding: 14px 0; }
+.arrow { display: inline-block; vertical-align: -3px; }
+</style>
+
+<main id="app"></main>
+<div class="tip" id="tip" hidden></div>
+<script type="application/json" id="data">/*PAGE_DATA*/null</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const EV = D.event;
+const $ = (tag, attrs, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) { if (k === "class") e.className = v; else e.setAttribute(k, v); }
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+};
+const NS = "http://www.w3.org/2000/svg";
+const S = (tag, attrs, ...kids) => {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+};
+
+/* ---- 時間格式（依事件的時區顯示；資料本身是 UTC 毫秒） ---- */
+const TZNAME = EV.tz === "Asia/Taipei" ? "台灣時間" : EV.tz;
+function parts(ms) {
+  const f = new Intl.DateTimeFormat("en-US", { timeZone: EV.tz, year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+  const o = {}; for (const p of f.formatToParts(new Date(ms))) o[p.type] = p.value;
+  if (o.hour === "24") o.hour = "00";
+  return o;
+}
+const fmtDT = ms => { const p = parts(ms); return `${p.month}/${p.day} ${p.hour}:${p.minute}`; };
+const fmtD = ms => { const p = parts(ms); return `${p.month}/${p.day}`; };
+const fmtFull = ms => { const p = parts(ms); return `${p.year}-${p.month.padStart(2, "0")}-${p.day.padStart(2, "0")} ${p.hour}:${p.minute}`; };
+const num = (v, d = 1) => v == null ? "—" : v.toFixed(d);
+const sensorName = s => s === "S1" ? "Sentinel-1（雷達）" : "Sentinel-2（光學）";
+const sensorVar = s => s === "S1" ? "var(--s1)" : "var(--s2)";
+const stationName = code => (D.stations.find(s => s.code === code) || {}).name || code;
+const VARLABEL = { oil_area: "油膜面積", oil_max_distance: "距事件最遠距離" };
+
+/* ---- 狀態：目前選的過境 ---- */
+const passes = D.passes;
+const refByPass = {}; for (const r of D.reference) if (r.pass_id) (refByPass[r.pass_id] ||= []).push(r);
+let selected = (passes.find(p => refByPass[p.pass_id] && p.covers) || passes.find(p => p.covers) || passes[0] || {}).pass_id || null;
+const listeners = [];
+function select(id) { selected = id; for (const f of listeners) f(); }
+
+/* ---- 提示框 ---- */
+const tip = document.getElementById("tip");
+function showTip(evt, nodes) {
+  tip.replaceChildren(...nodes); tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  let x = evt.clientX + 14, y = evt.clientY + 14;
+  if (x + r.width > innerWidth - 8) x = evt.clientX - r.width - 14;
+  if (y + r.height > innerHeight - 8) y = evt.clientY - r.height - 14;
+  tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px";
+}
+const hideTip = () => { tip.hidden = true; };
+function tipAtElement(el, nodes) { const b = el.getBoundingClientRect(); showTip({ clientX: b.right, clientY: b.top }, nodes); }
+
+/* ---- 標題區 ---- */
+const stations = D.stations;
+const dists = stations.map(s => s.dist_km);
+function header() {
+  const items = [
+    ["位置", `${EV.lat.toFixed(4)}°N, ${EV.lon.toFixed(4)}°E`],
+    ["發生時間", EV.time == null ? "未提供" : fmtFull(EV.time) + `（${TZNAME}）`],
+    ["分析期間", `${EV.start} 至 ${EV.end}`],
+    ["衛星過境", `${passes.length} 次（${passes.filter(p => p.covers).length} 次涵蓋事件位置）`],
+  ];
+  const h = $("section", {}, $("h1", {}, EV.name || "未命名事件"),
+    $("p", { class: "sub" }, "衛星過境、無人機出勤與風，放在同一條時間軸上。"),
+    $("ul", { class: "facts" }, items.map(([k, v]) => $("li", {}, k + " ", $("b", {}, v)))));
+  h.append($("p", { class: "note" }, stations.length
+    ? `風資料來自氣象署測站，位在陸地或港區，距事件位置 ${Math.min(...dists)}–${Math.max(...dists)} km，不是事件位置的風。`
+    : "這個事件沒有風資料。"));
+  return h;
+}
+
+/* ---- 時間軸 ---- */
+function timeline() {
+  const [T0, T1] = EV.period, W = 960, padL = 74, padR = 18, H = 218;
+  const x = ms => padL + (ms - T0) / (T1 - T0) * (W - padL - padR);
+  const rows = { S1: 54, S2: 94, drone: 134, ref: 174 };
+  const svg = S("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", style: "min-width:640px;display:block", role: "img",
+    "aria-label": "衛星過境、無人機出勤日與參考觀測的時間軸" });
+  // 日期刻度：每 7 天一條
+  for (let t = T0, i = 0; t <= T1; t += 7 * 86400000, i++) {
+    svg.append(S("line", { x1: x(t), x2: x(t), y1: 26, y2: 196, class: "grid" }), S("text", { x: x(t), y: 212, "text-anchor": "middle", class: "t-muted" }, fmtD(t)));
+  }
+  const lab = { S1: "Sentinel-1", S2: "Sentinel-2", drone: "無人機", ref: "文獻估計" };
+  for (const [k, y] of Object.entries(rows)) svg.append(S("text", { x: 6, y: y + 4, class: "t-ink" }, lab[k]));
+  if (EV.time != null) {
+    svg.append(S("line", { x1: x(EV.time), x2: x(EV.time), y1: 26, y2: 196, stroke: "var(--ink)", "stroke-width": 1.5 }),
+      S("text", { x: x(EV.time) + 4, y: 22, class: "t-ink" }, "事件 " + fmtDT(EV.time)));
+  }
+  // 無人機出勤日
+  for (const d of D.drone_days) {
+    const w = Math.max(4, x(d.end) - x(d.start));
+    const r = S("rect", { x: x(d.start), y: rows.drone - 6, width: w, height: 12, rx: 2, tabindex: 0, class: "mark",
+      fill: d.n_near > 0 ? "var(--wind)" : "none", stroke: "var(--wind)", "stroke-width": 1.5,
+      "aria-label": `無人機 ${d.date}，${d.n_photos} 張，其中 ${d.n_near} 張在事件位置 1 km 內` });
+    const show = e => showTip(e, [$("b", {}, "無人機 " + d.date), $("br"), `${d.n_photos} 張照片`, $("br"), `事件位置 1 km 內 ${d.n_near} 張`]);
+    r.addEventListener("pointermove", show); r.addEventListener("pointerleave", hideTip);
+    r.addEventListener("focus", () => tipAtElement(r, [$("b", {}, "無人機 " + d.date), $("br"), `${d.n_photos} 張，1 km 內 ${d.n_near} 張`])); r.addEventListener("blur", hideTip);
+    svg.append(r);
+  }
+  // 過境
+  const marks = [];
+  for (const p of passes) {
+    const cx = x(p.time), cy = rows[p.sensor];
+    const g = S("g", { class: "mark", tabindex: 0, role: "button", "aria-label": `${p.sensor} ${fmtDT(p.time)}，${p.covers ? "涵蓋" : "未涵蓋"}事件位置` });
+    g.append(S("circle", { cx, cy, r: 15, fill: "transparent" }),
+      S("circle", { class: "ring", cx, cy, r: 10 }),
+      S("circle", { cx, cy, r: 6, fill: p.covers ? sensorVar(p.sensor) : "var(--surface)", stroke: sensorVar(p.sensor), "stroke-width": 2 }));
+    const nodes = () => [$("b", {}, `${p.sensor} ${fmtDT(p.time)}`), $("br"), p.covers ? "涵蓋事件位置" : "未涵蓋事件位置",
+      $("br"), `距事件 ${num(p.hours_since_event)} 小時`, ...(p.cloud != null ? [$("br"), `雲量 ${num(p.cloud)}%`] : [])];
+    g.addEventListener("pointermove", e => showTip(e, nodes())); g.addEventListener("pointerleave", hideTip);
+    g.addEventListener("focus", () => tipAtElement(g, nodes())); g.addEventListener("blur", hideTip);
+    g.addEventListener("click", () => select(p.pass_id));
+    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(p.pass_id); } });
+    marks.push([p.pass_id, g]); svg.append(g);
+  }
+  // 參考觀測（菱形，放在對應過境的時間）
+  for (const r of D.reference) {
+    const p = passes.find(q => q.pass_id === r.pass_id); if (!p) continue;
+    const cx = x(p.time), cy = rows.ref;
+    const g = S("g", { class: "mark", tabindex: 0, role: "button", "aria-label": `文獻估計 ${VARLABEL[r.variable] || r.variable} ${r.value} ${r.unit}` });
+    g.append(S("circle", { cx, cy, r: 15, fill: "transparent" }), S("rect", { class: "ring", x: cx - 10, y: cy - 10, width: 20, height: 20, transform: `rotate(45 ${cx} ${cy})`, rx: 3 }),
+      S("rect", { x: cx - 5, y: cy - 5, width: 10, height: 10, transform: `rotate(45 ${cx} ${cy})`, fill: "var(--ink)", stroke: "var(--surface)", "stroke-width": 2 }));
+    const nodes = () => [$("b", {}, `${VARLABEL[r.variable] || r.variable} ${r.value} ${r.unit}`), $("br"), "文獻估計值，非地面真值"];
+    g.addEventListener("pointermove", e => showTip(e, nodes())); g.addEventListener("pointerleave", hideTip);
+    g.addEventListener("focus", () => tipAtElement(g, nodes())); g.addEventListener("blur", hideTip);
+    g.addEventListener("click", () => select(r.pass_id));
+    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(r.pass_id); } });
+    marks.push([r.pass_id, g]); svg.append(g);
+  }
+  listeners.push(() => { for (const [id, g] of marks) g.classList.toggle("sel", id === selected); });
+  const key = (inner, text) => $("li", {}, inner, text);
+  const dot = (fill, stroke) => S("svg", { width: 14, height: 14 }, S("circle", { cx: 7, cy: 7, r: 5, fill, stroke, "stroke-width": 2 }));
+  const legend = $("ul", { class: "legend" },
+    key(dot("var(--s1)", "var(--s1)"), "Sentinel-1（雷達）"), key(dot("var(--s2)", "var(--s2)"), "Sentinel-2（光學）"),
+    key(dot("var(--surface)", "var(--ink2)"), "空心：未涵蓋事件位置"),
+    key(S("svg", { width: 14, height: 14 }, S("rect", { x: 1, y: 3, width: 12, height: 8, rx: 2, fill: "var(--wind)" })), "無人機出勤日（空心：事件位置 1 km 內沒有照片）"),
+    key(S("svg", { width: 14, height: 14 }, S("rect", { x: 3, y: 3, width: 8, height: 8, fill: "var(--ink)", transform: "rotate(45 7 7)" })), "文獻估計值（非地面真值）"));
+  return $("section", { class: "card" }, $("h2", {}, "時間軸"),
+    $("p", { class: "cap" }, `顯示${TZNAME}。點選過境，下方各區同步標示。`), legend, $("div", { class: "scroll" }, svg));
+}
+
+/* ---- 過境表與選取的過境 ---- */
+function nearestWind(p, code) {
+  const rows = p.wind.filter(w => w.station === code && w.ws != null);
+  if (!rows.length) return null;
+  return rows.reduce((a, b) => Math.abs(b.gap_min ?? 0) < Math.abs(a.gap_min ?? 0) ? b : a);
+}
+function passTable() {
+  const head = ["感測器", `時間（${TZNAME}）`, "距事件 h", "涵蓋", "雲量 %", "無人機", ...stations.map(s => s.name)];
+  const numCols = new Set([2, 4, ...stations.map((_, i) => 6 + i)]);
+  const tbody = $("tbody");
+  const rowEls = [];
+  for (const p of passes) {
+    const drone = p.drone_date ? `${p.drone_date.slice(5)} ${p.drone_gap_hours > 0 ? "+" : ""}${num(p.drone_gap_hours)}h` : "—";
+    const cells = [
+      [$("span", { class: "sdot", style: `background:${sensorVar(p.sensor)}` }), p.sensor], fmtDT(p.time), num(p.hours_since_event), p.covers ? "是" : "否",
+      p.cloud == null ? "—" : num(p.cloud), drone,
+      ...stations.map(s => { const w = nearestWind(p, s.code); return w ? num(w.ws) : "—"; })];
+    const tr = $("tr", { tabindex: 0, "aria-label": `${p.sensor} ${fmtDT(p.time)}` }, cells.map((c, i) => $("td", { class: numCols.has(i) ? "num" : (p.covers || i < 4 ? "" : "") }, c)));
+    if (!p.covers) tr.querySelectorAll("td").forEach(td => td.classList.add("dim"));
+    tr.addEventListener("click", () => select(p.pass_id));
+    tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(p.pass_id); } });
+    rowEls.push([p.pass_id, tr]); tbody.append(tr);
+  }
+  listeners.push(() => { for (const [id, tr] of rowEls) { tr.classList.toggle("sel", id === selected); tr.setAttribute("aria-selected", id === selected); } });
+  const t = $("table", {}, $("thead", {}, $("tr", {}, head.map((h, i) => $("th", { class: numCols.has(i) ? "num" : "" }, h)))), tbody);
+  return $("section", { class: "card" }, $("h2", {}, "各次過境"),
+    $("p", { class: "cap" }, "最右三欄是各測站風速 (m/s)，取離過境時間最近的一筆（整點前 10 分鐘平均）。無人機欄：日期與時間差（小時，正值為無人機在衛星之後）。灰字：未涵蓋事件位置。"),
+    $("div", { class: "scroll" }, t));
+}
+const COMPASS = ["北", "北北東", "東北", "東北東", "東", "東南東", "東南", "南南東", "南", "南南西", "西南", "西南西", "西", "西北西", "西北", "北北西"];
+function compass(deg) { return COMPASS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16]; }
+function arrow(deg) {   // 風向是風「來自」的方向，箭頭畫成風吹去的方向
+  const a = S("svg", { class: "arrow", width: 16, height: 16, viewBox: "-8 -8 16 16", "aria-hidden": "true" },
+    S("path", { d: "M0 -6 L0 6 M0 6 L-3.5 2.5 M0 6 L3.5 2.5", stroke: "var(--ink)", "stroke-width": 1.6, fill: "none", "stroke-linecap": "round", transform: `rotate(${deg})` }));
+  return a;
+}
+function detail() {
+  const box = $("section", { class: "card" });
+  function draw() {
+    const p = passes.find(q => q.pass_id === selected);
+    box.replaceChildren($("h2", {}, "選取的過境"));
+    if (!p) { box.append($("p", { class: "empty" }, "沒有過境資料。")); return; }
+    box.append($("p", { class: "cap" }, `${sensorName(p.sensor)}　${fmtFull(p.time)}（${TZNAME}）`));
+    const dl = $("dl", {},
+      $("dt", {}, "距事件"), $("dd", {}, p.hours_since_event == null ? "未提供事件時間" : `${num(p.hours_since_event)} 小時`),
+      $("dt", {}, "涵蓋事件位置"), $("dd", {}, p.covers ? "是" : "否"),
+      $("dt", {}, "軌道／模式"), $("dd", {}, [p.orbit, p.mode].filter(Boolean).join(" / ") || "—"),
+      $("dt", {}, "雲量"), $("dd", {}, p.cloud == null ? "—（整個圖幅平均）" : `${num(p.cloud)}%（整個圖幅平均，不是事件處）`),
+      $("dt", {}, "無人機"), $("dd", {}, p.drone_date ? `${p.drone_date}，時間差 ${p.drone_gap_hours > 0 ? "+" : ""}${num(p.drone_gap_hours)} 小時（正值：無人機在衛星之後），事件位置 1 km 內 ${p.drone_n_near} 張` : "沒有配對到"));
+    box.append(dl);
+    if (!p.wind.length) { box.append($("p", { class: "empty" }, "這次過境沒有風資料。")); }
+    else {
+      const tb = $("tbody");
+      const counts = {}; for (const w of p.wind) counts[w.station] = (counts[w.station] || 0) + 1;
+      for (const w of p.wind) {
+        const st = stations.find(s => s.code === w.station);
+        const gap = w.gap_min == null ? "—" : (w.gap_min > 0 ? "+" : "") + num(w.gap_min) + " 分";
+        tb.append($("tr", { style: "cursor:default" }, $("td", {}, stationName(w.station), st ? $("span", { class: "dim" }, ` ${st.dist_km} km`) : null),
+          $("td", { class: "num" }, gap), $("td", { class: "num" }, w.ws == null ? "—" : num(w.ws)),
+          $("td", {}, w.wd == null ? $("span", { class: "dim" }, "—") : [arrow(w.wd), ` ${Math.round(w.wd)}° ${compass(w.wd)}`])));
+      }
+      const two = Object.values(counts).some(c => c > 1);
+      box.append($("h2", {}, "風"), $("div", { class: "scroll" }, $("table", {}, $("thead", {}, $("tr", {}, $("th", {}, "測站"), $("th", { class: "num" }, "與過境相差"), $("th", { class: "num" }, "風速 m/s"), $("th", {}, "風向（來自）"))), tb)),
+        $("p", { class: "cap" }, (two ? "過境剛好夾在兩個整點觀測之間，兩筆都列出，各自標示時間差（負值：觀測在過境之前）。" : "時間差為 0 代表過境落在該筆觀測的 10 分鐘窗口內。") + " 風速 ≦ 0.2 m/s 時風向不記錄。"));
+    }
+    const refs = refByPass[p.pass_id] || [];
+    if (refs.length) box.append($("h2", {}, "文獻估計"), ...refs.map(r => $("p", { class: "sub" }, `${VARLABEL[r.variable] || r.variable} ${r.value} ${r.unit === "km2" ? "km²" : r.unit}`)));
+  }
+  listeners.push(draw); draw();
+  return box;
+}
+
+/* ---- 風：每個測站一格，共用時間軸與風速刻度 ---- */
+function windChart() {
+  const sec = $("section", { class: "card" }, $("h2", {}, "逐時風速"));
+  const codes = stations.map(s => s.code).filter(c => (D.wind_hourly[c] || []).length);
+  if (!codes.length) { sec.append($("p", { class: "empty" }, "沒有風資料。")); return sec; }
+  sec.append($("p", { class: "cap" }, "每格一個測站，風速刻度相同。垂直線是衛星過境（藍：Sentinel-1，橘：Sentinel-2），粗線是選取的過境。移動游標讀取各測站的值。"));
+  const [T0, T1] = EV.period, W = 960, padL = 74, padR = 18, rowH = 84, top = 8, H = top + rowH * codes.length + 26;
+  const x = ms => padL + (ms - T0) / (T1 - T0) * (W - padL - padR);
+  let vmax = 0; for (const c of codes) for (const r of D.wind_hourly[c]) if (r[1] != null) vmax = Math.max(vmax, r[1]);
+  vmax = Math.max(5, Math.ceil(vmax / 5) * 5);
+  const svg = S("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", style: "min-width:640px;display:block", role: "img", "aria-label": "三個測站的逐時風速" });
+  const passLines = [];
+  codes.forEach((c, i) => {
+    const y0 = top + i * rowH, y1 = y0 + rowH - 14;
+    const y = v => y1 - v / vmax * (y1 - y0 - 6);
+    const st = stations.find(s => s.code === c);
+    for (const v of [0, vmax / 2, vmax]) svg.append(S("line", { x1: padL, x2: W - padR, y1: y(v), y2: y(v), class: "grid" }), S("text", { x: padL - 6, y: y(v) + 4, "text-anchor": "end", class: "t-muted" }, v));
+    svg.append(S("text", { x: 6, y: y0 + 16, class: "t-ink" }, st.name), S("text", { x: 6, y: y0 + 30, class: "t-muted" }, `${st.dist_km} km`), S("text", { x: 6, y: y0 + 44, class: "t-muted" }, "m/s"));
+    let d = "", pen = false;
+    for (const r of D.wind_hourly[c]) { if (r[1] == null) { pen = false; continue; } d += (pen ? "L" : "M") + x(r[0]).toFixed(1) + " " + y(r[1]).toFixed(1); pen = true; }
+    svg.append(S("path", { d, fill: "none", stroke: "var(--wind)", "stroke-width": 1.5, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  });
+  for (const p of passes) {
+    const l = S("line", { x1: x(p.time), x2: x(p.time), y1: top, y2: top + rowH * codes.length - 14, stroke: sensorVar(p.sensor), "stroke-width": 1, opacity: .55 });
+    passLines.push([p.pass_id, l]); svg.append(l);
+  }
+  for (let t = T0; t <= T1; t += 7 * 86400000) svg.append(S("text", { x: x(t), y: H - 6, "text-anchor": "middle", class: "t-muted" }, fmtD(t)));
+  const cross = S("line", { y1: top, y2: top + rowH * codes.length - 14, stroke: "var(--ink)", "stroke-width": 1, visibility: "hidden" });
+  svg.append(cross);
+  svg.addEventListener("pointermove", e => {
+    const b = svg.getBoundingClientRect(), sx = (e.clientX - b.left) / b.width * W;
+    if (sx < padL || sx > W - padR) { cross.setAttribute("visibility", "hidden"); hideTip(); return; }
+    const ms = T0 + (sx - padL) / (W - padL - padR) * (T1 - T0);
+    const nodes = [];
+    let nearest = null;
+    for (const c of codes) {
+      const rows = D.wind_hourly[c];
+      const r = rows.reduce((a, q) => Math.abs(q[0] - ms) < Math.abs(a[0] - ms) ? q : a, rows[0]);
+      if (!nearest || Math.abs(r[0] - ms) < Math.abs(nearest - ms)) nearest = r[0];
+      nodes.push($("br"), `${stationName(c)} `, $("b", {}, r[1] == null ? "—" : r[1].toFixed(1) + " m/s"), r[2] == null ? "" : ` ${Math.round(r[2])}°`);
+    }
+    cross.setAttribute("x1", x(nearest)); cross.setAttribute("x2", x(nearest)); cross.setAttribute("visibility", "visible");
+    showTip(e, [$("b", {}, fmtDT(nearest) + " 前 10 分鐘平均"), ...nodes]);
+  });
+  svg.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+  listeners.push(() => { for (const [id, l] of passLines) { const on = id === selected; l.setAttribute("stroke-width", on ? 3 : 1); l.setAttribute("opacity", on ? 1 : .55); } });
+  sec.append($("div", { class: "scroll" }, svg));
+  return sec;
+}
+
+/* ---- 參考觀測 ---- */
+function references() {
+  const sec = $("section", { class: "card" }, $("h2", {}, "外部參考觀測"),
+    $("p", { class: "cap" }, "文獻中研究者的估計值，不是地面真值。本專案沒有油膜面積的自動偵測，所以只並列顯示，不拿來驗證。"));
+  if (!D.reference.length) { sec.append($("p", { class: "empty" }, "沒有參考觀測。")); return sec; }
+  const ul = $("ul", { class: "ref" });
+  for (const r of D.reference) {
+    const p = passes.find(q => q.pass_id === r.pass_id);
+    const where = p ? $("button", { class: "link", type: "button" }, `${p.sensor} ${fmtDT(p.time)}`) : $("span", { class: "dim" }, r.match === "ambiguous" ? "有多次過境符合，未配對" : "沒有符合的過境");
+    if (p) where.addEventListener("click", () => select(p.pass_id));
+    ul.append($("li", {}, $("span", { class: "val" }, `${r.value} ${r.unit === "km2" ? "km²" : r.unit}`),
+      $("div", {}, $("strong", {}, VARLABEL[r.variable] || r.variable), `　${r.date}　對應過境：`, where,
+        $("small", {}, r.source), r.note ? $("small", {}, r.note) : null)));
+  }
+  sec.append(ul);
+  return sec;
+}
+
+/* ---- 組頁 ---- */
+const app = document.getElementById("app");
+app.append(header());
+if (!passes.length) app.append($("p", { class: "empty" }, "分析期間內沒有衛星過境。"));
+else app.append(timeline(), $("div", { class: "two" }, passTable(), detail()), windChart(), references());
+if (!passes.length) app.append(references());
+for (const f of listeners) f();
+</script>

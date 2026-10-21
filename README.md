@@ -92,6 +92,17 @@
 
 文獻只給日期，沒給時間，也沒說是哪個時區的日期。`match_passes` 對應過境的規則：同感測器、且過境的 UTC 日期或台灣日期任一等於該日期才算候選；候選剛好一個才配對，沒有或有多個就不猜（`no_pass`／`ambiguous`）。結果在 `data/reference_matched.csv`：三筆都配對到唯一一次過境（7/24 的 S2 為 `S2_20230724T022541Z`；7/27 的 S1 為 `S1_20230726T220124Z`，UTC 日期是 7/26、台灣日期是 7/27，只有台灣日期對得上，所以文獻的 7/27 很可能是台灣日期，這是推論）。新增變數時先登記在 `reference.VARIABLES`（含單位）。
 
+### 介面頁（`site/index.html`）
+
+一個自成一體的 HTML 檔，用瀏覽器直接打開就能看（資料已嵌在檔案裡，圖用內嵌 SVG 畫，不需要網路或伺服器）。內容：標題與限制提醒、時間軸（Sentinel-1／Sentinel-2 過境、無人機出勤日、文獻估計）、各次過境表、選取的過境（風、無人機配對）、三個測站的逐時風速、外部參考觀測。點選任一次過境，各區同步標示；Sentinel-2 夾在兩個整點之間的兩筆風都列出，各自標示時間差。
+
+產生方式：
+- `page_data.py`：把 `passes.csv`、`features_long.csv`、`reference_matched.csv`、`wind_hourly.csv`、`stations.csv` 與無人機每日摘要整理成頁面用的 JSON（資料處理都在這裡，有單元測試）。
+- `build_page.py`：把 JSON 嵌進 `site/template.html`，輸出 `site/index.html`。
+- 指令：`python build_page.py --data data --template site/template.html --out site/index.html`；換事件時加 `--lat --lon --start --end`。
+
+限制：頁面本身的畫圖程式（`template.html` 裡的 JavaScript）沒有自動化測試，只用瀏覽器實際打開、點選與游標移動檢查過；有測試的是資料整理與嵌入的部分。沒有地圖，因為沒有可顯示的油膜範圍資料。
+
 ## 進度
 
 - [x] 文獻起點：JpGU 2025 摘要
@@ -101,6 +112,7 @@
 - [x] 時間軸對齊：衛星過境與無人機出勤
 - [x] 風：CODiS 三個測站的逐時風與各次過境的風
 - [x] 長格式特徵表（`features.py`）：各次過境的所有變數整成一張表
+- [x] 統一介面頁（`site/index.html`）：時間軸、過境、風與參考觀測
 - [x] 外部參考觀測表（`reference.py`）：JpGU 摘要的三個數字與對應過境
 - [x] 事件參數可替換（`event.py`）：位置、期間、發生時間可換；無人機選填；`hours_since_sinking` 改名 `hours_since_event`
 - [ ] 海流與潮汐
