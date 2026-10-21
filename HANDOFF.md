@@ -57,7 +57,7 @@
 | 統一介面頁 | `page_data.py`、`build_page.py`、`site/template.html`、`site/index.html`、`test_page_data.py`、`test_build_page.py` |
 | README（快速開始、專案結構、目標與實際完成範圍、擴充指南）、`requirements.txt` | `README.md`、`requirements.txt` |
 
-共 325 個測試（沒有 xarray 或 OpenDrift 的環境，5 個相關測試會跳過；在雲端用 OpenDrift 1.14.12 與在有 xarray 的環境都實際跑過）。原始資料（STAC JSON、CODiS CSV）放在 `data/raw/`，不進版控。README 的重現指令已在乾淨副本實際執行，輸出與已提交的檔案逐位元相同。
+共 344 個測試（沒有 xarray 或 OpenDrift 的環境，只有 336 個會跑、14 個跳過；在雲端用 OpenDrift 1.14.12 與在有 xarray 的環境都實際跑過）。原始資料（STAC JSON、CODiS CSV）放在 `data/raw/`，不進版控。README 的重現指令已在乾淨副本實際執行，輸出與已提交的檔案逐位元相同。
 
 ## 已定的規則
 
@@ -91,3 +91,5 @@
 - JpGU 摘要的 12 景雷達影像到 9/22，我們的查詢只到 8/31。
 - JpGU 的三個數字只讀過中文轉述，沒核對英文原文；文獻只給日期，7/27 很可能是台灣日期（推論）。
 - 三個風站都在陸地或港區，離沉船 7–14 km，不是沉船位置的風。
+
+SMOC 總流模擬（utotal／vtotal，檔案 `data/raw/cmems/cmems_mod_glo_phy_anfc_merged-uv_PT1H-i_1792587045864.nc`，風漂移係數 0.03 與 0.02）：正式結果已寫入 `data/drift_vs_reference.csv`，方向仍是北北西（342°），粒子全數擱淺，重心距離約 52 km，最遠 55–66 km；文獻為東南、最遠 26.5 km，沒有比較接近。

@@ -182,12 +182,15 @@ def main():
     ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
     ap.add_argument("--current-variables", nargs=2, metavar=("X", "Y"),
                     help="指定哪兩個變數當海流，例如 SMOC：--current-variables utotal vtotal（會關掉 OpenDrift 的 Stokes drift）")
+    ap.add_argument("--release", default=None,
+                    help="釋放時間（UTC，YYYY-MM-DD HH:MM）；不給就用沉沒時間。改這個是探索性對照，不是官方設定")
     ap.add_argument("--end", default="2023-07-28 23:00",
                     help="模擬結束時間（UTC，YYYY-MM-DD HH:MM）；預設是海流與風資料結束前一小時")
     args = ap.parse_args()
 
     end = pd.Timestamp(args.end, tz="UTC")
-    table = run_simulation(args.current_nc, args.wind_nc, end_time=end, particles=args.particles,
+    release = pd.Timestamp(args.release, tz="UTC") if args.release else SINKING_TIME
+    table = run_simulation(args.current_nc, args.wind_nc, release_time=release, end_time=end, particles=args.particles,
                            wind_drift_factor=args.wind_drift_factor, seed=args.seed,
                            current_variables=tuple(args.current_variables) if args.current_variables else None)
     table.to_csv(args.out, index=False, encoding="utf-8-sig")

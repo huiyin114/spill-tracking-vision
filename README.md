@@ -44,6 +44,7 @@ python build_page.py --data data --template site/template.html --out site/index.
 | `extract_ocean.py`、`ocean.py` | 模型海流與模型風：抽沉船最近格點的逐時序列、換算速度與方向、對齊到各次過境 |
 | `drift_sim.py` | 用 OpenDrift 的 OpenOil 模擬沉船處釋放的油漂移（在 opendrift 環境執行） |
 | `drift_compare.py` | 模擬的粒子位置與文獻的方向、最遠距離並列 |
+| `merge_hycom.py` | 把 HYCOM 一天一個檔的 NetCDF 合併成一個（探索性對照用，在 opendrift 環境執行） |
 | `drift_plot.py` | 漂移模擬的圖：過境時刻的粒子位置靜態圖與動畫（在 opendrift 環境執行） |
 | `features.py` | 整成長格式特徵表 |
 | `reference.py` | 外部文獻估計值與過境的對應 |
@@ -145,6 +146,17 @@ python build_page.py --data data --template site/template.html --out site/index.
 - 這個結果只說明「在這些假設與這兩個資料來源下」模擬往北漂；它不能證明文獻有錯，也不能證明模擬正確。文獻數字是會議摘要裡的判釋估計，方法未公開。
 
 SMOC 海流版本（波浪與潮汐）：`python drift_sim.py --current-nc <SMOC .nc> --current-variables utotal vtotal --wind-nc <風 .nc> --wind-drift-factor 0.03 --out data/drift_particles_smoc003.csv`（0.02 輸出 `_smoc002.csv`）。SMOC 的總流已含波浪與潮汐，所以關掉 OpenDrift 另外加的斯托克斯漂移，避免重複計算。粒子全部擱淺後，擱淺位置維持到結束時間，過境時刻才有位置可比。雲端預覽：方向仍是北北西（約 342°），沒有比較接近文獻。
+
+探索性對照：`drift_sim.py --release "2023-07-22 07:00"` 可以改釋放時間（UTC），用來對照氣象署官方模擬的起點。這不是官方設定，預設仍是沉沒時間。結果仍不是東南（見 AI_LOG 第 22 節）。
+
+HYCOM 海流對照（探索性）：從 HYCOM `GLBy0.08/expt_93.0/uv3z`（3 小時一筆，表層，`water_u`、`water_v`，範圍 21–25°N、118–121.9°E）的 NCSS 網頁一天一天下載 2023-07-20 到 07-29（網站規定一次不超過一天），再合併：
+
+```
+python merge_hycom.py --inputs data/raw/hycom/hycom_07*.nc --out data/raw/hycom/hycom_merged.nc
+python drift_sim.py --current-nc data/raw/hycom/hycom_merged.nc --wind-nc <風 .nc> --wind-drift-factor 0.03 --release "2023-07-22 07:00" --out data/drift_particles_hycom_o03.csv
+```
+
+HYCOM 的變數用標準名稱，不需要 `--current-variables`。結果（AI_LOG 第 23 節）：用官方起點釋放，粒子往南到西南；用沉沒時間釋放，仍往北並擱淺。兩者都不是文獻的東南。這些是探索性結果，正式表格沒有收錄。
 
 圖（`drift_plot.py`，輸出到 `figures/`）：每個文獻對應的過境一張靜態圖（兩個模擬並排：粒子、重心與重心軌跡、沉船、25／50／100 km 距離圈、文獻方向與最遠距離圈）、一段動畫 `drift_animation.gif`。陸地用 OpenDrift 擱淺判斷所用的同一份陸地遮罩，不需要另外下載底圖。圖上的文字是英文。文獻方向的箭頭只表示方向，長度沒有意義。畫圖程式沒有單元測試，只用眼睛檢查圖；有測試的是方位與距離換算、地圖範圍、動畫時間、重心軌跡。
 
