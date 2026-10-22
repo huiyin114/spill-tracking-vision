@@ -1,6 +1,6 @@
 # 交接說明
 
-給下一次對話的 Claude：請先讀這份、`README.md`、`AI_LOG.md`，再繼續。更新日期：2026-10-21。
+給下一次對話的 Claude：請先讀這份、`README.md`、`AI_LOG.md`，再繼續。更新日期：2026-10-22。
 
 ## 作業
 
@@ -57,7 +57,7 @@
 | 統一介面頁 | `page_data.py`、`build_page.py`、`site/template.html`、`site/index.html`、`test_page_data.py`、`test_build_page.py` |
 | README（快速開始、專案結構、目標與實際完成範圍、擴充指南）、`requirements.txt` | `README.md`、`requirements.txt` |
 
-共 344 個測試（沒有 xarray 或 OpenDrift 的環境，只有 336 個會跑、14 個跳過；在雲端用 OpenDrift 1.14.12 與在有 xarray 的環境都實際跑過）。原始資料（STAC JSON、CODiS CSV）放在 `data/raw/`，不進版控。README 的重現指令已在乾淨副本實際執行，輸出與已提交的檔案逐位元相同。
+共 387 個測試（只有核心套件的環境會跑 369 個、跳過 18 個；少了 xarray、OpenDrift、requests 或 h5py 時對應的測試會跳過；在雲端用 OpenDrift 1.14.12 與在有 xarray 的環境都實際跑過）。原始資料（STAC JSON、CODiS CSV）放在 `data/raw/`，不進版控。README 的重現指令已在乾淨副本實際執行，輸出與已提交的檔案逐位元相同。
 
 ## 已定的規則
 
@@ -93,3 +93,11 @@
 - 三個風站都在陸地或港區，離沉船 7–14 km，不是沉船位置的風。
 
 SMOC 總流模擬（utotal／vtotal，檔案 `data/raw/cmems/cmems_mod_glo_phy_anfc_merged-uv_PT1H-i_1792587045864.nc`，風漂移係數 0.03 與 0.02）：正式結果已寫入 `data/drift_vs_reference.csv`，方向仍是北北西（342°），粒子全數擱淺，重心距離約 52 km，最遠 55–66 km；文獻為東南、最遠 26.5 km，沒有比較接近。
+
+## 2026-10-22 更新
+
+- 氣象署個案頁的輸入場（OCM 流場、TWRF 風，2023 年 7 月，模式預報）已用 `cwa_probe.py`、`cwa_extract.py`（重試、暫存續跑）、`cwa_prepare.py` 抽出並整理；用 d10 流場加風、沉沒時間釋放，模擬往東南，與氣象署官方模擬方向一致（總覽圖 `figures/drift_overview.png`、`figures_cwa/`）。細節與限制見 `AI_LOG.md` §26–27。CMEMS、SMOC、HYCOM 都不能重現東南。
+- 測試共 410 個（19 個測試檔；缺 xarray、OpenDrift、requests、h5py、scipy 時對應測試跳過）。
+- 報告（Docs）已寫好 9 節，連結在對話中；使用者需自行檢查數字與措辭。
+- 未提交：`cwa_*.py`、`test_cwa_*.py`、`figures_cwa/`、`figures/drift_overview.png`、`data/drift_overview_points.csv`、AI_LOG、README、HANDOFF 等。`data/raw/` 與粒子表不進版控。
+- 還沒確認：U10M/V10M 的屬性（是否 TWRF 2.0）、d10 的意義、流場時區。

@@ -45,6 +45,10 @@ python build_page.py --data data --template site/template.html --out site/index.
 | `drift_sim.py` | 用 OpenDrift 的 OpenOil 模擬沉船處釋放的油漂移（在 opendrift 環境執行） |
 | `drift_compare.py` | 模擬的粒子位置與文獻的方向、最遠距離並列 |
 | `merge_hycom.py` | 把 HYCOM 一天一個檔的 NetCDF 合併成一個（探索性對照用，在 opendrift 環境執行） |
+| `drift_overview.py` | 多個模擬的粒子重心軌跡總覽圖，附文獻與官方模擬方向（在 opendrift 環境執行） |
+| `cwa_probe.py` | 探測氣象署個案 zip 內的輸入場（只讀目錄與一個時間步，不下載整包） |
+| `cwa_extract.py` | 從氣象署個案 zip 只抽出模擬範圍與期間的海流與風，存成小的 NetCDF（不下載整包） |
+| `cwa_prepare.py` | 把氣象署流場（d10）與風場整理成 drift_sim 讀得懂的檔案（補時間缺口、陸地近岸缺值、加 CF 名稱） |
 | `drift_plot.py` | 漂移模擬的圖：過境時刻的粒子位置靜態圖與動畫（在 opendrift 環境執行） |
 | `features.py` | 整成長格式特徵表 |
 | `reference.py` | 外部文獻估計值與過境的對應 |
@@ -158,6 +162,20 @@ python drift_sim.py --current-nc data/raw/hycom/hycom_merged.nc --wind-nc <風 .
 
 HYCOM 的變數用標準名稱，不需要 `--current-variables`。結果（AI_LOG 第 23 節）：用官方起點釋放，粒子往南到西南；用沉沒時間釋放，仍往北並擱淺。兩者都不是文獻的東南。這些是探索性結果，正式表格沒有收錄。
 
+HYCOM 版的圖放在 `figures_hycom/`（兩張過境圖與動畫，左：沉沒時間釋放，右：2023-07-22 07:00 UTC 釋放，風漂移係數都是 0.03）。粒子表 `data/drift_particles_hycom_sinking03.csv`、`..._official03.csv` 是雲端產生的，不進版控；重現指令：
+
+```
+python drift_sim.py --current-nc data/raw/hycom/hycom_merged.nc --wind-nc <風 .nc> --wind-drift-factor 0.03 --out data/drift_particles_hycom_sinking03.csv
+python drift_sim.py --current-nc data/raw/hycom/hycom_merged.nc --wind-nc <風 .nc> --wind-drift-factor 0.03 --release "2023-07-22 07:00" --out data/drift_particles_hycom_official03.csv
+python drift_plot.py --particles HYCOM_release_sinking=data/drift_particles_hycom_sinking03.csv HYCOM_release_0722_0700UTC=data/drift_particles_hycom_official03.csv --matched data/reference_matched.csv --passes data/passes.csv --out-dir figures_hycom --animation
+```
+
+總覽圖（`drift_overview.py`，輸出 `figures/drift_overview.png` 與 `data/drift_overview_points.csv`）：把四種設定（CMEMS 原版、SMOC、HYCOM 官方起點、HYCOM 沉沒時間釋放）的粒子重心軌跡畫在同一張地圖上，顏色與線型區分模擬（線寬一樣），記號形狀區分時刻：圓點是台灣時間 2023-07-24 02:30，方塊是 07-25 19:30。氣象署官方模擬在同樣兩個時刻的油膜中心用黑色的同形記號標出（從標有時間的 MP4 截圖，用畫面格線目測，約 ±0.05°，不是官方資料，圖上有標註），可以一對一比較。另畫沉船點、文獻的東南方向與最遠距離圈；CSV 是各時刻的位置、相對沉船點的方位與距離。指令：
+
+```
+python drift_overview.py --particles CMEMS=data/drift_particles_base.csv SMOC=data/drift_particles_smoc003.csv HYCOM_0722=data/drift_particles_hycom_official03.csv HYCOM_sinking=data/drift_particles_hycom_sinking03.csv --out figures/drift_overview.png --table-out data/drift_overview_points.csv
+```
+
 圖（`drift_plot.py`，輸出到 `figures/`）：每個文獻對應的過境一張靜態圖（兩個模擬並排：粒子、重心與重心軌跡、沉船、25／50／100 km 距離圈、文獻方向與最遠距離圈）、一段動畫 `drift_animation.gif`。陸地用 OpenDrift 擱淺判斷所用的同一份陸地遮罩，不需要另外下載底圖。圖上的文字是英文。文獻方向的箭頭只表示方向，長度沒有意義。畫圖程式沒有單元測試，只用眼睛檢查圖；有測試的是方位與距離換算、地圖範圍、動畫時間、重心軌跡。
 
 ### 模型海流與風（`extract_ocean.py`、`ocean.py`）
@@ -269,3 +287,15 @@ HYCOM 的變數用標準名稱，不需要 `--current-variables`。結果（AI_L
 - 中央氣象署. 氣候觀測資料查詢服務（CODiS）. https://codis.cwa.gov.tw/ （測站清單、逐時風速與風向月報表；查詢日期 2026-10-11）
 - 中央氣象署. 氣候觀測資料查詢服務—觀測資料說明（Ver.2025.12.31）. 於 CODiS 測站資料頁的「資料說明」下載 （站碼意義、逐時風的定義、符號說明）
 - 中央氣象署. 氣象資料開放平臺. https://opendata.cwa.gov.tw/ （海象監測資料 O-B0075-001／002 僅提供最近 48 小時與 30 天；查詢日期 2026-10-11）
+
+## 氣象署輸入場的重現（探索性）
+
+氣象署個案頁的流場（OCM）與風場（WRF）是公開的，zip 約 14 GB；用 HTTP Range 只抽模擬範圍與期間（`cwa_extract.py`，會重試與暫存續跑），再整理成 OpenDrift 的輸入（`cwa_prepare.py`）。UCURR 在 2023-07-22 01:00 至 07-25 00:00 整段是缺值，改用 d10 版本（UCURRd10 的 U 分量缺 07-22 01:00 至 07-23 00:00，線性內插補）。結果：沉沒時間釋放往東南，與氣象署官方模擬方向一致；細節與限制見 AI_LOG §27。
+
+```
+python cwa_extract.py --relax-x509 --out data\raw\cwa\cwa_forcing.nc
+python cwa_extract.py --relax-x509 --variables UCURRd10 VCURRd10 --start "2023-07-20 00:00" --end "2023-07-29 00:00" --out data\raw\cwa\cwa_d10.nc
+python cwa_prepare.py --currents data/raw/cwa/cwa_d10.nc --wind data/raw/cwa/cwa_forcing_U10M_V10M.nc --out-current data/raw/cwa/cwa_current_prepared.nc --out-wind data/raw/cwa/cwa_wind_prepared.nc
+python drift_sim.py --current-nc data/raw/cwa/cwa_current_prepared.nc --wind-nc data/raw/cwa/cwa_wind_prepared.nc --release "2023-07-20 21:30" --end "2023-07-28 23:00" --out data/drift_particles_cwa_sinking.csv
+python drift_plot.py --particles CWA_release_sinking=data/drift_particles_cwa_sinking.csv CWA_release_0722_0700UTC=data/drift_particles_cwa_official.csv --matched data/reference_matched.csv --passes data/passes.csv --out-dir figures_cwa --animation
+```
