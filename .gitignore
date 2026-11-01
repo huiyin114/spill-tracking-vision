@@ -18,3 +18,6 @@ site/index.fragment.html
 site/page_data.json
 # 漂移模擬的粒子表（每個約 14 MB，可由 drift_sim.py 重現）
 data/drift_particles_*.csv
+
+# 第三方文獻，不放進倉庫
+U03-P04.pdf

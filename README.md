@@ -2,7 +2,7 @@
 
 天使輪（Angel）2023 高雄外海沉船油汙事件的多源遙測整合。（課程作業 HW2）
 
-把 Sentinel-1/2 衛星過境、無人機空拍與氣象署測站風，整合到同一條時間軸與一個介面頁。AI（Claude）協助撰寫，協作過程記錄在 [AI_LOG.md](AI_LOG.md)。
+把 Sentinel-1/2 衛星過境、無人機空拍與氣象署測站風，整合到同一條時間軸與一個介面頁，並用 OpenDrift 以氣象署的流場與風場模擬油的漂移，與文獻比對。AI（Claude）協助撰寫，協作過程記錄在 [AI_LOG.md](AI_LOG.md)。
 
 ## 快速開始
 
@@ -11,7 +11,7 @@ pip install -r requirements.txt
 pytest                      # 全部測試，都自己造資料，不讀 data/
 ```
 
-直接看成果：用瀏覽器打開 `site/index.html`（資料已嵌在檔案裡，不需要網路）。
+直接看成果：用瀏覽器打開 `site/index.html`（資料已嵌在檔案裡，不需要網路）；漂移模擬的圖在 `figures/`。
 
 從資料重新產生全部輸出（原始資料不在倉庫，來源與下載方式見下方「資料來源與查詢方式」）：
 
@@ -23,13 +23,19 @@ python extract_ocean.py --current-nc data/raw/cmems/<海流檔>.nc --wind-nc dat
 python ocean.py --timeline data/timeline.csv --ocean data/ocean_at_wreck.csv --out data/ocean_at_passes.csv
 python features.py --timeline data/timeline.csv --wind data/wind_at_passes.csv --ocean data/ocean_at_passes.csv --out-passes data/passes.csv --out data/features_long.csv --out-wide data/features_wide.csv
 python reference.py --reference data/reference_observations.csv --passes data/passes.csv --out data/reference_matched.csv
-# 漂移模擬：drift_sim.py 要在 opendrift 環境執行；粒子表是模擬輸出，執行一次約幾分鐘
-python drift_sim.py --current-nc data/raw/cmems/<海流檔>.nc --wind-nc data/raw/cmems/<風檔>.nc --wind-drift-factor 0.03 --out data/drift_particles_base.csv
-python drift_sim.py --current-nc data/raw/cmems/<海流檔>.nc --wind-nc data/raw/cmems/<風檔>.nc --wind-drift-factor 0.02 --out data/drift_particles_wind002.csv
-python drift_compare.py --particles base=data/drift_particles_base.csv wind002=data/drift_particles_wind002.csv --matched data/reference_matched.csv --passes data/passes.csv --out data/drift_vs_reference.csv
-# 漂移模擬的圖（opendrift 環境）：每個文獻對應過境一張 PNG，加一段 GIF 動畫
-python drift_plot.py --particles base=data/drift_particles_base.csv wind002=data/drift_particles_wind002.csv --matched data/reference_matched.csv --passes data/passes.csv --out-dir figures --animation
 python build_page.py --data data --template site/template.html --out site/index.html
+```
+
+漂移模擬（在 opendrift 環境執行；輸入是氣象署個案頁的流場與風場，抽取與整理的細節見「漂移模擬」）：
+
+```
+python cwa_extract.py --relax-x509 --out data/raw/cwa/cwa_forcing.nc
+python cwa_extract.py --relax-x509 --variables UCURRd10 VCURRd10 --start "2023-07-20 00:00" --end "2023-07-29 00:00" --out data/raw/cwa/cwa_d10.nc
+python cwa_prepare.py --currents data/raw/cwa/cwa_d10.nc --wind data/raw/cwa/cwa_forcing_U10M_V10M.nc --out-current data/raw/cwa/cwa_current_prepared.nc --out-wind data/raw/cwa/cwa_wind_prepared.nc
+python drift_sim.py --current-nc data/raw/cwa/cwa_current_prepared.nc --wind-nc data/raw/cwa/cwa_wind_prepared.nc --release "2023-07-20 21:30" --end "2023-07-28 23:00" --out data/drift_particles_cwa_sinking.csv
+python drift_compare.py --particles CWA_sinking=data/drift_particles_cwa_sinking.csv --matched data/reference_matched.csv --passes data/passes.csv --out data/drift_vs_reference.csv
+python drift_plot.py --particles CWA_sinking=data/drift_particles_cwa_sinking.csv --matched data/reference_matched.csv --passes data/passes.csv --out-dir figures --animation
+python drift_overview.py --particles CWA_sinking=data/drift_particles_cwa_sinking.csv --out figures/drift_overview.png --table-out data/drift_overview_points.csv
 ```
 
 ## 專案結構
@@ -41,20 +47,20 @@ python build_page.py --data data --template site/template.html --out site/index.
 | `extract_drone_exif.py`、`drone.py` | 讀無人機照片 EXIF 清單、每日摘要（照片原檔不在倉庫，EXIF 清單在 `data/drone/`） |
 | `timeline.py` | 衛星過境、無人機出勤、事件時間放到同一條時間軸 |
 | `wind.py` | 氣象署測站逐時風，與各次過境對齊 |
-| `extract_ocean.py`、`ocean.py` | 模型海流與模型風：抽沉船最近格點的逐時序列、換算速度與方向、對齊到各次過境 |
-| `drift_sim.py` | 用 OpenDrift 的 OpenOil 模擬沉船處釋放的油漂移（在 opendrift 環境執行） |
-| `drift_compare.py` | 模擬的粒子位置與文獻的方向、最遠距離並列 |
-| `merge_hycom.py` | 把 HYCOM 一天一個檔的 NetCDF 合併成一個（探索性對照用，在 opendrift 環境執行） |
-| `drift_overview.py` | 多個模擬的粒子重心軌跡總覽圖，附文獻與官方模擬方向（在 opendrift 環境執行） |
-| `cwa_probe.py` | 探測氣象署個案 zip 內的輸入場（只讀目錄與一個時間步，不下載整包） |
-| `cwa_extract.py` | 從氣象署個案 zip 只抽出模擬範圍與期間的海流與風，存成小的 NetCDF（不下載整包） |
-| `cwa_prepare.py` | 把氣象署流場（d10）與風場整理成 drift_sim 讀得懂的檔案（補時間缺口、陸地近岸缺值、加 CF 名稱） |
-| `drift_plot.py` | 漂移模擬的圖：過境時刻的粒子位置靜態圖與動畫（在 opendrift 環境執行） |
+| `extract_ocean.py`、`ocean.py` | 模型海流與模型風（Copernicus Marine）：抽沉船最近格點的逐時序列、換算速度與方向、對齊到各次過境 |
 | `features.py` | 整成長格式特徵表 |
 | `reference.py` | 外部文獻估計值與過境的對應 |
 | `page_data.py`、`build_page.py`、`site/` | 產生統一介面頁 |
+| `cwa_probe.py` | 探測氣象署個案 zip 內的輸入場（只讀目錄與一個時間步，不下載整包） |
+| `cwa_extract.py` | 從氣象署個案 zip 只抽出模擬範圍與期間的海流與風，存成小的 NetCDF（重試、暫存續跑） |
+| `cwa_prepare.py` | 把氣象署流場（d10）與風場整理成 drift_sim 讀得懂的檔案（補時間缺口、陸地近岸缺值、加 CF 名稱） |
+| `drift_sim.py` | 用 OpenDrift 的 OpenOil 模擬沉船處釋放的油漂移（在 opendrift 環境執行） |
+| `drift_compare.py` | 模擬的粒子位置與文獻的方向、最遠距離並列 |
+| `drift_plot.py` | 漂移模擬的圖：過境時刻的粒子位置靜態圖與動畫 |
+| `drift_overview.py` | 粒子重心軌跡總覽圖，與氣象署官方模擬在同一時刻比較 |
 | `test_*.py` | 單元測試，與上面的模組一一對應 |
-| `AI_LOG.md` | AI 協作紀錄；`HANDOFF.md` 是給新對話接手用的交接說明 |
+| `opendrift-env.yml` | opendrift 環境的 conda 套件清單 |
+| `AI_LOG.md` | AI 協作紀錄（包含試過但沒採用的做法與 AI 的錯誤） |
 
 ## 為什麼做這個
 
@@ -76,16 +82,14 @@ python build_page.py --data data --template site/template.html --out site/index.
 
 中央大學太空及遙測研究中心（Chu et al., 2025）曾用 Sentinel-1/2、Landsat-8/9 與無人機監測此事件，整理見 [jpgu2025.md](jpgu2025.md)。
 
-## 目標與實際完成範圍
-
-原本的目標有三項，實際完成的範圍如下（2026-10-12 評估時間與資料後，決定縮小範圍，把已有的部分做完整、可驗證，並讓事件與變數可以替換）：
+## 目標與範圍
 
 1. 事件期間所有可用的衛星過境與無人機出勤，放到同一條時間軸：**完成**。
-2. 為每個觀測補上同時間的物理條件：**已完成風（氣象署測站）、模型海流與模型風（Copernicus Marine，沉船最近格點）**。氣象署公開的海象資料只有最近 48 小時與 30 天，取不到 2023 年，所以海流改用 Copernicus Marine。模型資料只下載 2023-07-20 至 07-29，所以 18 次過境中只有 3 次（7/22 S1、7/24 S2、7/27 S1）有模型值。潮汐沒有另外處理，所用的海流資料集是否含潮流尚未確認。
-3. 以沉船為污染源做漂移模擬並與觀測比對：**完成**（OpenDrift；只比方向與距離）。**模擬結果與文獻不一致**：兩組模擬都往北到北北西漂，文獻是往東南（見「漂移模擬」的結果）。
-4. 另外評估過、**未做**：雷達暗區偽陽性過濾。
+2. 為每個觀測補上同時間的物理條件（特徵表）：**完成**。風用氣象署測站，模型海流與模型風用 Copernicus Marine（沉船最近格點）。氣象署公開的海象資料只有最近 48 小時與 30 天，取不到 2023 年，所以特徵表的海流用 Copernicus Marine。這份模型資料只涵蓋 2023-07-20 至 07-29，18 次過境中只有 3 次（7/22 S1、7/24 S2、7/27 S1）有模型值。
+3. 以沉船為污染源做漂移模擬並與文獻比對：**完成**，輸入用氣象署個案頁的流場與風場，模擬往東南，與文獻方向一致（見「漂移模擬」）。
+4. 評估過、**未做**：雷達暗區偽陽性過濾、潮汐（台灣來源取不到 2023 年）、把粒子位置放進介面頁。
 
-因為沒有油膜面積的自動偵測，專案裡沒有任何「驗證」文獻數字的結果；文獻估計值只是並列顯示。
+因為沒有油膜面積的自動偵測，專案裡沒有「驗證」文獻數字的結果；文獻估計值只是並列顯示，模擬與文獻只比方向與距離。
 
 ## 資料來源與查詢方式
 
@@ -122,61 +126,47 @@ python build_page.py --data data --template site/template.html --out site/index.
 
 ## 程式與輸出說明
 
-### 漂移模擬（`drift_sim.py`、`drift_compare.py`）
+### 漂移模擬（`drift_sim.py`、`drift_compare.py`、`drift_plot.py`、`drift_overview.py`）
 
-用 OpenDrift 1.14.12 的 `OpenOil`，在沉船位置一次釋放粒子，用上面的模型海流與風推動，輸出粒子位置表；`drift_compare.py` 再把粒子位置和文獻的方向、最遠距離並列。設定（都是假設，不是觀測）：
+用 OpenDrift 1.14.12 的 `OpenOil`，在沉船位置一次釋放粒子，用流場與風場推動，輸出粒子位置表。
+
+**輸入：氣象署個案頁的流場與風場。**天使輪事件的氣象署海象環境資訊平台個案頁提供官方溢油漂流模擬與其輸入場（`ocean.cwa.gov.tw` 的 zip，約 14 GB，2023 年 7 月的**模式預報**，不是實際量測）：海流來自氣象署 OCM（SCHISM，約 1/40°，逐時）；風 U10M、V10M 約 0.14°、逐時（屬性沒讀過，推測是 TWRF 2.0）。
+
+- `cwa_extract.py` 用 HTTP Range 只抽沉船附近（21–23.5°N、119–121.5°E）與 2023-07-19 至 07-29 的資料，不下載整包；連線中斷會重試，每批時間步存暫存檔，重跑接續。Python 3.13 以後氣象署憑證的 X.509 嚴格檢查會失敗，要加 `--relax-x509`（仍驗證憑證鏈與主機名稱）。流場與風場網格解析度不同，所以分成兩個檔案寫出。第一個指令同時會抽 UCURR、VCURR；它們在 2023-07-22 01:00 至 07-25 00:00 整段是缺值，所以流場改用 d10 版本（`UCURRd10`、`VCURRd10`；`d10` 的意義未確認），本專案只用到第一個指令產生的風檔。
+- `cwa_prepare.py` 整理成 OpenDrift 的輸入：d10 的 U 分量缺 2023-07-22 01:00 至 07-23 00:00 共 24 小時，用前後時間線性內插；陸地與近岸缺值用最近的有值格點補（沉船離岸約 6 km，不補的話靠岸粒子讀不到海流）；加上 CF 標準名稱。這兩個補法是我們的選擇，不是氣象署的處理。
+- 檔案時間軸是「hours since 1800-01-01」，沒有說明時區，這裡視為 UTC（未驗證）。流場與風場只涵蓋上述範圍，粒子離開後被 OpenDrift 停用（`missing_data`，位置維持空）。
+
+**模擬設定**（都是假設，不是觀測）：
 
 - 釋放：沉船位置、沉沒時間 2023-07-20 21:30 UTC、一次釋放 1000 顆。油實際何時、漏多久、漏多少都不知道；粒子數只影響統計平滑度，不代表油量。船上油量 491.848 t 是總載量，不是外洩量。
 - 油種：`AMSA Average Very Low Sulfur Fuel Oil (VLSFO)`。依據：Taiwan News（2023-07-22）報導天使輪沉沒時載有低硫燃油 393.4 t、輕柴油 98.1 t、潤滑油 0.348 t；「低硫燃油 = VLSFO」是我們的對應，不是報導寫的。輕柴油（約 20%）沒有模擬。
-- 風漂移係數：OpenDrift 1.14.12 預設 0.03（風向量的 3%，另加海流與 Stokes drift；我們用單元測試確認過 3% 的語意）。沒有海浪資料，Stokes drift 用內建備用值 0，所以實際只有這個係數。事先固定兩組：0.03 與 0.02，看結果之後不追加、不挑選。
+- 風漂移係數：OpenDrift 1.14.12 預設 0.03（風向量的 3%；我們用單元測試確認過 3% 的語意）。沒有海浪資料，Stokes drift 用內建備用值 0。
 - 其他用 OpenDrift 預設：海流隨機擾動 0.05 m/s、風擾動 0.5 m/s、岸邊擱淺、風化過程全開；隨機種子固定為 0，結果可重現。計算步長 15 分鐘，輸出每小時。
-- 擱淺：OpenDrift 的結果在粒子擱淺後位置會消失，但油還在岸上；`result_to_table` 讓擱淺粒子保留最後位置。飄出資料範圍的粒子（`missing_data`）位置維持空。
-- 比對：只比方向與 7/27 的最遠距離。不比面積（模擬沒有對應的量）。方向只列「重心方位與東南（135 度）差幾度」，不做通過／不通過的判定；最遠距離同時列最遠一顆與 95% 分位數。結果在 `data/drift_vs_reference.csv`。這是並列，不是驗證：文獻數字是研究者的判釋估計。
-- 方向與文獻不一致時照實寫；可能原因（推測，未驗證）包括海流 1/12° 的解析度、沒有海浪、風來源是 stress-equivalent wind、釋放時間假設。不為了接近文獻調整參數。
-- 執行時 OpenDrift 會警告「模擬結束時間不在輸出時間上」並把結束時間延長到 2023-07-28 23:30 UTC：釋放在 21:30 UTC，輸出都在每小時的 30 分，要求的結束時間 23:00 因此被延長半小時，沒有影響。
+- 擱淺：OpenDrift 的結果在粒子擱淺後位置會消失，但油還在岸上；程式讓擱淺粒子保留最後位置，並把最後狀態延續到結束時間。
+- 執行時 OpenDrift 會警告「模擬結束時間不在輸出時間上」並把結束時間延長半小時：釋放在 21:30 UTC，輸出都在每小時的 30 分，沒有影響。
+- `--release "YYYY-MM-DD HH:MM"`（UTC）可以改釋放時間；預設是沉沒時間。`--current-variables X Y` 可以指定哪兩個變數當海流（變數沒有 CF 標準名稱時用）。
 
-結果（`data/drift_vs_reference.csv`，在使用者的電腦與我的雲端環境跑出同樣的數字）：
+**結果**（`data/drift_vs_reference.csv`，文獻對應的兩次過境）：
 
-| 模擬 | 過境 | 模型時間差 | 重心方位 | 與東南（135 度）差 | 重心距離 | 最遠一顆 | 95% 分位數 | 擱淺粒子 | 文獻最遠距離 |
-|---|---|---|---|---|---|---|---|---|---|
-| 風係數 0.03 | 7/24 S2 | +4.3 分 | 北北西 341° | 154° | 58 km | 80 km | 77 km | 728／1000 | — |
-| 風係數 0.03 | 7/27 S1 | +28.6 分 | 北北西 344° | 151° | 60 km | 109 km | 86 km | 728／1000 | 26.5 km |
-| 風係數 0.02 | 7/24 S2 | +4.3 分 | 北北西 338° | 157° | 74 km | 80 km | 77 km | 0／1000 | — |
-| 風係數 0.02 | 7/27 S1 | +28.6 分 | 北北西 351° | 144° | 95 km | 107 km | 100 km | 13／1000 | 26.5 km |
+| 過境 | 模型時間差 | 重心方位 | 與東南（135°）差 | 重心距離 | 最遠一顆 | 95% 分位數 | 擱淺粒子 | 文獻最遠距離 |
+|---|---|---|---|---|---|---|---|---|
+| 7/24 S2（台灣時間 10:25） | +4.3 分 | 東南 145° | 9.9° | 63 km | 81 km | 79 km | 126／1000 | — |
+| 7/27 S1（台灣時間 06:01） | +28.6 分 | 東南 142° | 6.6° | 93 km | 158 km | 150 km | 142／1000 | 26.5 km |
 
-- 兩組模擬的重心都在沉船的北到北北西，和文獻的東南差 144 到 157 度，距離（58–95 km）也遠大於文獻的最遠距離 26.5 km。所以這次模擬與文獻不一致，不是「接近但有差距」。
-- 方向對風漂移係數（0.03 或 0.02）不敏感；距離對係數敏感（重心距離 58 對 74 km、60 對 95 km）。這是對上表的描述，不是原因的驗證。
-- 係數 0.03 時約 7 成粒子在 7/22 晚上就擱淺在台灣西南岸（約 23.05°N，取自雲端預覽的同一份資料），所以 7/24、7/27 的位置多半是擱淺位置；係數 0.02 時粒子較晚才靠岸（7/27 只有 13 顆擱淺）。
-- 這個結果只說明「在這些假設與這兩個資料來源下」模擬往北漂；它不能證明文獻有錯，也不能證明模擬正確。文獻數字是會議摘要裡的判釋估計，方法未公開。
+與氣象署官方模擬在同一時刻比較（`data/drift_overview_points.csv`、`figures/drift_overview.png`）：官方模擬沒有公開位置，這裡的官方位置是我從有時間標記的 MP4 截圖、用畫面格線目測的（約 ±0.05°，**不是官方資料**），只有兩個時刻可比：
 
-SMOC 海流版本（波浪與潮汐）：`python drift_sim.py --current-nc <SMOC .nc> --current-variables utotal vtotal --wind-nc <風 .nc> --wind-drift-factor 0.03 --out data/drift_particles_smoc003.csv`（0.02 輸出 `_smoc002.csv`）。SMOC 的總流已含波浪與潮汐，所以關掉 OpenDrift 另外加的斯托克斯漂移，避免重複計算。粒子全部擱淺後，擱淺位置維持到結束時間，過境時刻才有位置可比。雲端預覽：方向仍是北北西（約 342°），沒有比較接近文獻。
+| 時刻（台灣時間） | 我們的模擬（方位、距離） | 官方模擬（目測） |
+|---|---|---|
+| 2023-07-24 02:30 | 143°、53 km | 161°、49 km |
+| 2023-07-25 19:30 | 136°、122 km | 142°、144 km |
 
-探索性對照：`drift_sim.py --release "2023-07-22 07:00"` 可以改釋放時間（UTC），用來對照氣象署官方模擬的起點。這不是官方設定，預設仍是沉沒時間。結果仍不是東南（見 AI_LOG 第 22 節）。
+- 方向與文獻（東南）一致、與官方模擬接近；**距離遠大於文獻的 26.5 km**（官方模擬也一樣遠）。可能原因（推測，未驗證）：沒有模擬蒸發、乳化、油膜消散等風化，也沒有 OILmap 的物理設定。
+- 7/28 之後的重心方向受擱淺與資料範圍邊界影響，不是漂移結果，不解讀。
+- 這是並列比較，不是驗證：文獻數字是會議摘要裡的判釋估計，方法未公開；流場是模式預報，沒有用觀測單獨驗證；時區與補值是我們的假設。
 
-HYCOM 海流對照（探索性）：從 HYCOM `GLBy0.08/expt_93.0/uv3z`（3 小時一筆，表層，`water_u`、`water_v`，範圍 21–25°N、118–121.9°E）的 NCSS 網頁一天一天下載 2023-07-20 到 07-29（網站規定一次不超過一天），再合併：
+**其他流場來源（探索性，沒有採用）**：Copernicus Marine 全球 1/12° 流場、含波浪與潮汐的 SMOC、HYCOM，模擬都不是東南（前兩者往北北西），差異主要來自流場來源與近岸解析度；程式、圖與數字見 AI_LOG 第 20–23 節與較早的 commit（HYCOM 合併程式在 `2480ff0`）。
 
-```
-python merge_hycom.py --inputs data/raw/hycom/hycom_07*.nc --out data/raw/hycom/hycom_merged.nc
-python drift_sim.py --current-nc data/raw/hycom/hycom_merged.nc --wind-nc <風 .nc> --wind-drift-factor 0.03 --release "2023-07-22 07:00" --out data/drift_particles_hycom_o03.csv
-```
-
-HYCOM 的變數用標準名稱，不需要 `--current-variables`。結果（AI_LOG 第 23 節）：用官方起點釋放，粒子往南到西南；用沉沒時間釋放，仍往北並擱淺。兩者都不是文獻的東南。這些是探索性結果，正式表格沒有收錄。
-
-HYCOM 版的圖放在 `figures_hycom/`（兩張過境圖與動畫，左：沉沒時間釋放，右：2023-07-22 07:00 UTC 釋放，風漂移係數都是 0.03）。粒子表 `data/drift_particles_hycom_sinking03.csv`、`..._official03.csv` 是雲端產生的，不進版控；重現指令：
-
-```
-python drift_sim.py --current-nc data/raw/hycom/hycom_merged.nc --wind-nc <風 .nc> --wind-drift-factor 0.03 --out data/drift_particles_hycom_sinking03.csv
-python drift_sim.py --current-nc data/raw/hycom/hycom_merged.nc --wind-nc <風 .nc> --wind-drift-factor 0.03 --release "2023-07-22 07:00" --out data/drift_particles_hycom_official03.csv
-python drift_plot.py --particles HYCOM_release_sinking=data/drift_particles_hycom_sinking03.csv HYCOM_release_0722_0700UTC=data/drift_particles_hycom_official03.csv --matched data/reference_matched.csv --passes data/passes.csv --out-dir figures_hycom --animation
-```
-
-總覽圖（`drift_overview.py`，輸出 `figures/drift_overview.png` 與 `data/drift_overview_points.csv`）：把四種設定（CMEMS 原版、SMOC、HYCOM 官方起點、HYCOM 沉沒時間釋放）的粒子重心軌跡畫在同一張地圖上，顏色與線型區分模擬（線寬一樣），記號形狀區分時刻：圓點是台灣時間 2023-07-24 02:30，方塊是 07-25 19:30。氣象署官方模擬在同樣兩個時刻的油膜中心用黑色的同形記號標出（從標有時間的 MP4 截圖，用畫面格線目測，約 ±0.05°，不是官方資料，圖上有標註），可以一對一比較。另畫沉船點、文獻的東南方向與最遠距離圈；CSV 是各時刻的位置、相對沉船點的方位與距離。指令：
-
-```
-python drift_overview.py --particles CMEMS=data/drift_particles_base.csv SMOC=data/drift_particles_smoc003.csv HYCOM_0722=data/drift_particles_hycom_official03.csv HYCOM_sinking=data/drift_particles_hycom_sinking03.csv --out figures/drift_overview.png --table-out data/drift_overview_points.csv
-```
-
-圖（`drift_plot.py`，輸出到 `figures/`）：每個文獻對應的過境一張靜態圖（兩個模擬並排：粒子、重心與重心軌跡、沉船、25／50／100 km 距離圈、文獻方向與最遠距離圈）、一段動畫 `drift_animation.gif`。陸地用 OpenDrift 擱淺判斷所用的同一份陸地遮罩，不需要另外下載底圖。圖上的文字是英文。文獻方向的箭頭只表示方向，長度沒有意義。畫圖程式沒有單元測試，只用眼睛檢查圖；有測試的是方位與距離換算、地圖範圍、動畫時間、重心軌跡。
+**圖**（`drift_plot.py`，輸出到 `figures/`）：每個文獻對應的過境一張靜態圖（粒子、重心與重心軌跡、沉船、25／50／100 km 距離圈、文獻方向與最遠距離圈）、一段動畫 `drift_animation.gif`；`drift_overview.py` 畫重心軌跡與官方模擬同一時刻的位置（圓點 7/24 02:30、方塊 7/25 19:30，台灣時間）。陸地用 OpenDrift 擱淺判斷所用的同一份陸地遮罩，不需要另外下載底圖。圖上的文字是英文。文獻方向的箭頭只表示方向，長度沒有意義。畫圖程式沒有單元測試，只用眼睛檢查圖；有測試的是方位與距離換算、地圖範圍、動畫時間、重心軌跡。
 
 ### 模型海流與風（`extract_ocean.py`、`ocean.py`）
 
@@ -254,21 +244,14 @@ python drift_overview.py --particles CMEMS=data/drift_particles_base.csv SMOC=da
 
 - [x] 文獻起點：JpGU 2025 摘要
 - [x] 事件參數（官方沉沒時間與沉船位置）
-- [x] 衛星目錄：Sentinel-1/2 過境與是否涵蓋沉船
-- [x] 無人機清單與每日摘要
-- [x] 時間軸對齊：衛星過境與無人機出勤
-- [x] 風：CODiS 三個測站的逐時風與各次過境的風
-- [x] 長格式特徵表（`features.py`）：各次過境的所有變數整成一張表
-- [x] 統一介面頁（`site/index.html`）：時間軸、過境、風與參考觀測
-- [x] 外部參考觀測表（`reference.py`）：JpGU 摘要的三個數字與對應過境
-- [x] 事件參數可替換（`event.py`）：位置、期間、發生時間可換；無人機選填；`hours_since_sinking` 改名 `hours_since_event`
-- [x] 模型海流與模型風（`extract_ocean.py`、`ocean.py`）：沉船最近格點，對齊到各次過境
+- [x] 衛星目錄、無人機清單、時間軸對齊
+- [x] 風（CODiS 三個測站）、模型海流與模型風（Copernicus Marine）
+- [x] 長格式特徵表、外部參考觀測表、統一介面頁、事件參數可替換
+- [x] 氣象署輸入場抽取與整理（`cwa_*.py`）
+- [x] 漂移模擬、與文獻及官方模擬比對、圖與動畫
 - [ ] 潮汐（沒有另外處理）
 - [ ] 雷達暗區偽陽性過濾（未做）
-- [x] 漂移模擬與比對的程式（`drift_sim.py`、`drift_compare.py`）：單元測試與突變檢查完成
-- [x] 漂移模擬的正式結果（`data/drift_vs_reference.csv`）：與文獻不一致，照實記錄
-- [x] 漂移模擬的圖（`drift_plot.py`）：靜態圖與動畫
-- [ ] 把粒子位置放進介面頁（尚未決定是否做）
+- [ ] 把粒子位置放進介面頁（未做）
 
 ## 參考資料
 
@@ -287,15 +270,4 @@ python drift_overview.py --particles CMEMS=data/drift_particles_base.csv SMOC=da
 - 中央氣象署. 氣候觀測資料查詢服務（CODiS）. https://codis.cwa.gov.tw/ （測站清單、逐時風速與風向月報表；查詢日期 2026-10-11）
 - 中央氣象署. 氣候觀測資料查詢服務—觀測資料說明（Ver.2025.12.31）. 於 CODiS 測站資料頁的「資料說明」下載 （站碼意義、逐時風的定義、符號說明）
 - 中央氣象署. 氣象資料開放平臺. https://opendata.cwa.gov.tw/ （海象監測資料 O-B0075-001／002 僅提供最近 48 小時與 30 天；查詢日期 2026-10-11）
-
-## 氣象署輸入場的重現（探索性）
-
-氣象署個案頁的流場（OCM）與風場（WRF）是公開的，zip 約 14 GB；用 HTTP Range 只抽模擬範圍與期間（`cwa_extract.py`，會重試與暫存續跑），再整理成 OpenDrift 的輸入（`cwa_prepare.py`）。UCURR 在 2023-07-22 01:00 至 07-25 00:00 整段是缺值，改用 d10 版本（UCURRd10 的 U 分量缺 07-22 01:00 至 07-23 00:00，線性內插補）。結果：沉沒時間釋放往東南，與氣象署官方模擬方向一致；細節與限制見 AI_LOG §27。
-
-```
-python cwa_extract.py --relax-x509 --out data\raw\cwa\cwa_forcing.nc
-python cwa_extract.py --relax-x509 --variables UCURRd10 VCURRd10 --start "2023-07-20 00:00" --end "2023-07-29 00:00" --out data\raw\cwa\cwa_d10.nc
-python cwa_prepare.py --currents data/raw/cwa/cwa_d10.nc --wind data/raw/cwa/cwa_forcing_U10M_V10M.nc --out-current data/raw/cwa/cwa_current_prepared.nc --out-wind data/raw/cwa/cwa_wind_prepared.nc
-python drift_sim.py --current-nc data/raw/cwa/cwa_current_prepared.nc --wind-nc data/raw/cwa/cwa_wind_prepared.nc --release "2023-07-20 21:30" --end "2023-07-28 23:00" --out data/drift_particles_cwa_sinking.csv
-python drift_plot.py --particles CWA_release_sinking=data/drift_particles_cwa_sinking.csv CWA_release_0722_0700UTC=data/drift_particles_cwa_official.csv --matched data/reference_matched.csv --passes data/passes.csv --out-dir figures_cwa --animation
-```
+- 中央氣象署海象環境資訊平台. 天使輪溢油漂流模擬個案頁. https://ocean.cwa.gov.tw/V2/event （官方溢油漂流模擬與輸入場 zip：海流 OCM、風 U10M／V10M；2023 年 7 月的模式預報）
